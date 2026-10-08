@@ -12,7 +12,9 @@
           config = { allowUnfree = true; android_sdk.accept_license = true; };
         };
         android = pkgs.androidenv.composeAndroidPackages {
-          platformVersions = [ "36" ];
+          # The app compiles against 36; jni_flutter compiles against 35.
+          # Nix SDKs are immutable, so every required platform must be present.
+          platformVersions = [ "35" "36" ];
           buildToolsVersions = [ "35.0.0" ];
           includeNDK = true;
           ndkVersions = [ "28.2.13676358" ];

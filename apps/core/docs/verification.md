@@ -47,3 +47,26 @@ contextual token dialog and a browser fallback for this case.
 This is not a production-release certification. Physical-device behavior,
 private-asset downloads, OEM-specific installer/notification behavior, background
 alerts, and stable signing remain outside the first-version verification scope.
+
+## Nix build repair and Flutter alignment
+
+The Nix shell pins Flutter 3.47.0 / Dart 3.13.0. Rechecked formatting, analysis,
+and all 14 tests with that SDK. The two wide-layout golden images were refreshed
+after inspecting the difference: Flutter's vertical divider rendering changed
+by one pixel column; the phone goldens are unchanged.
+
+Added Android SDK Platform 35 alongside 36 in `flake.nix`, since `jni_flutter`
+requires 35 even though Core compiles against 36. Built `flutter build appbundle`
+successfully inside the regenerated Nix shell, without attempting SDK writes into
+the Nix store. CI now uses the same Flutter version and checks app-bundle builds.
+The Gradle/AGP/Kotlin deprecation warnings remain nonfatal; their compatibility
+flags are retained rather than bypassing dependency validation.
+
+Installed the 18.9 MB ARM64 release-mode development APK on the connected Android
+36 handset and launched Core Dev successfully. Its process remained running and
+no Core crash appeared in the Android crash buffer. The device subsequently had
+another app in the foreground, so no additional on-device UI interactions or
+other-app installation/uninstallation were performed in this pass.
+
+The Flutter 3.47 web build also passes. Chromium screenshots were refreshed
+against that build using live GitHub data.

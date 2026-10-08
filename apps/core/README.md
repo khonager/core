@@ -1,12 +1,13 @@
 # Core app
 
-An Android-first home for khonager apps and websites, built in Flutter 3.41.9 /
-Dart 3.11.5. Core's reference documentation and templates remain in this repository.
+An Android-first home for khonager apps and websites, built in Flutter 3.47.0
+(the version pinned by the Nix development shell). Core's reference documentation
+and templates remain in this repository.
 
 ## Run
 
 From the repository root, optionally enter `nix develop` (the committed lock pins
-Nixpkgs). Otherwise install Flutter 3.41.9, Java 17, and Android SDK/NDK components
+Nixpkgs). Otherwise install Flutter 3.47.0, Java 17, and Android SDK/NDK components
 required by Flutter, then run `flutter doctor` to check the toolchain.
 
 ```sh
@@ -24,7 +25,8 @@ dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
 flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64
-flutter build web
+flutter build appbundle
+flutter build web --no-web-resources-cdn
 ```
 
 Use `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` on modern Android
@@ -114,3 +116,16 @@ local project launchers; see [docs/assets.md](docs/assets.md). Core's temporary
 ring mark is a simple vector, pending the user's final branding.
 
 The repository has not selected a license; see the root README.
+
+## Nix Android SDK troubleshooting
+
+After changing `flake.nix`, exit and re-enter `nix develop` so `ANDROID_HOME` and
+`ANDROID_SDK_ROOT` point to the new SDK. It includes platforms 35 and 36: the
+app uses 36, while `jni_flutter` requests 35. A missing platform otherwise makes
+Gradle attempt an installation into the read-only Nix store. Do not run
+`sdkmanager` against that store path or try to make it writable.
+
+Use the shell's Flutter 3.47.0 consistently; a system Flutter version may differ.
+The existing AGP 8 / Kotlin compatibility flags remain intentional while the
+plugin graph uses the legacy Kotlin Gradle plugin. Flutter's deprecation
+warnings for those versions are not the missing-SDK build failure.
