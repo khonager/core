@@ -41,11 +41,13 @@ class GitHub {
   }
 
   final Map<String, (String?, dynamic)> _cache = {};
-  Future<dynamic> get(String path) async {
-    final cached = _cache[path];
+  Future<dynamic> get(String path, {Map<String, String>? query}) async {
+    final uri = Uri.https('api.github.com', path, query);
+    final cacheKey = uri.toString();
+    final cached = _cache[cacheKey];
     final response = await client
         .get(
-          Uri.https('api.github.com', path),
+          uri,
           headers: {
             ...headers,
             if (cached?.$1 != null) 'If-None-Match': cached!.$1!,
@@ -64,15 +66,26 @@ class GitHub {
       }, statusCode: response.statusCode);
     }
     final data = jsonDecode(response.body);
-    _cache[path] = (response.headers['etag'], data);
+    _cache[cacheKey] = (response.headers['etag'], data);
     return data;
   }
 
   Future<List<Release>> releases(Project p) async {
-    final releases = parseReleases(
-      await get('/repos/${p.repository}/releases') as List,
-    );
-    // A busy dev channel can push the stable release out of the first page.
+    final releases = <Release>[];
+    var page = 1;
+    while (true) {
+      final batch =
+          await get(
+                '/repos/${p.repository}/releases',
+                query: {'per_page': '30', 'page': '$page'},
+              )
+              as List;
+      releases.addAll(parseReleases(batch));
+      if (releases.any((r) => r.dev) || batch.length < 30) break;
+      page++;
+    }
+    releases.sort((a, b) => b.date.compareTo(a.date));
+    // A busy dev channel can still push the stable release out of the feed.
     if (releases.isNotEmpty && !releases.any((r) => !r.dev)) {
       try {
         releases.add(

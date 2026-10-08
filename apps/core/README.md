@@ -42,7 +42,7 @@ CI builds the same development artifact without publishing a release.
 - Warm eggshell surface, large rounded icons, subdued descriptions.
 - GitHub stable/prerelease data and Markdown changelogs. Stable releases are
   recovered through the latest endpoint when absent from the recent release feed;
-  development releases are selected from the latest 30 published releases.
+  development releases are found by paging through published releases.
 - Latest workflow runs, condensed status separators, links to GitHub Actions.
   Red means any tracked workflow failed; orange means one is still running;
   green means all tracked workflows passed. Cancelled/missing/unavailable data

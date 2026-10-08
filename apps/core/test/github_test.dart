@@ -215,4 +215,19 @@ void main() {
     expect(state.latest(false)!.tag, 'v1');
     expect(state.latest(true)!.tag, 'v2-dev');
   });
+  test('development release beyond the first page is found', () async {
+    final requestedPages = <String?>[];
+    final github = GitHub(
+      client: MockClient((r) async {
+        requestedPages.add(r.url.queryParameters['page']);
+        final data = r.url.queryParameters['page'] == '1'
+            ? List.generate(30, (i) => release('v$i', false, '2025-01-01'))
+            : [release('dev-latest', true, '2025-02-01')];
+        return http.Response(jsonEncode(data), 200);
+      }),
+    );
+    final state = ProjectState()..releases = await github.releases(project);
+    expect(requestedPages, ['1', '2']);
+    expect(state.latest(true)!.tag, 'dev-latest');
+  });
 }
