@@ -4,13 +4,22 @@ Core is the shared reference for khonager applications. It records the product,
 design, UX, engineering, repository, and release decisions that should not need
 to be rediscovered for every new project.
 
-Core is a baseline and decision record, not a framework or a package dependency.
+Core is a baseline and decision record, and now also hosts the Android-first
+[Core app](apps/core/README.md): a curated app/website library with GitHub build
+activity and release downloads. The reference documents remain independently
+useful; applications do not need a Core package dependency.
 Applications may diverge when their users, genre, or platforms require it, but
 the reason should be written down in that application's repository.
 
 The baseline was inferred from the existing khonager project portfolio rather
 than invented as a generic best-practices list. [`docs/portfolio-audit.md`](docs/portfolio-audit.md)
 records the evidence and confidence of those inferences.
+
+## Core app
+
+The first development version lives in [`apps/core`](apps/core/README.md).
+Edit [`catalog/projects.json`](catalog/projects.json) to curate the library.
+See the app README for running, building, and current limitations.
 
 ## Start here
 

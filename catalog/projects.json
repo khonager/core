@@ -1,0 +1,43 @@
+[
+  {
+    "id": "trans",
+    "name": "Trans",
+    "description": "Your everyday public transit companion.",
+    "repository": "khonager/Trans",
+    "packageId": "de.khonager.trans",
+    "icon": "assets/icons/trans.png",
+    "devPackageId": "de.khonager.trans.unstable"
+  },
+  {
+    "id": "typesync",
+    "name": "TypeSync",
+    "description": "Notes, ideas, and writing, wherever you are.",
+    "repository": "khonager/TypeSync",
+    "packageId": "de.khonager.typesync",
+    "icon": "assets/icons/typesync.png"
+  },
+  {
+    "id": "trace",
+    "name": "Trace",
+    "description": "A private, local-first home for Matrix conversations.",
+    "repository": "khonager/Trace",
+    "packageId": "chat.trace.client",
+    "icon": null
+  },
+  {
+    "id": "majika",
+    "name": "Majika",
+    "description": "Explore your taste. Find your next favorite.",
+    "repository": "khonager/Majika",
+    "packageId": "de.khonager.majika",
+    "icon": "assets/icons/majika.png"
+  },
+  {
+    "id": "website",
+    "name": "Khonager",
+    "description": "My projects, experiments, and a little about me.",
+    "repository": "khonager/portofolio",
+    "website": "https://khonager.de",
+    "icon": null
+  }
+]

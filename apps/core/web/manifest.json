@@ -1,0 +1,17 @@
+{
+  "name": "Core",
+  "short_name": "Core",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F6F2E8",
+  "theme_color": "#F6F2E8",
+  "description": "Your apps, websites, releases, and build activity.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
