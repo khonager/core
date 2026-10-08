@@ -68,5 +68,7 @@ no Core crash appeared in the Android crash buffer. The device subsequently had
 another app in the foreground, so no additional on-device UI interactions or
 other-app installation/uninstallation were performed in this pass.
 
-The Flutter 3.47 web build also passes. Chromium screenshots were refreshed
+The Flutter 3.47 web build also passes. The preview build now uses
+`--no-web-resources-cdn` to serve CanvasKit locally instead of waiting on the
+external renderer CDN during startup. Chromium screenshots were refreshed
 against that build using live GitHub data.
