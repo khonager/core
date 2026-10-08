@@ -34,7 +34,26 @@ phones; `app-x86_64-release.apk` is for x86 emulators. The release compiler redu
 size, but this is still a
 **development build**, labeled **Core Dev**, with package ID `dev.khonager.core.dev`
 and a development signing key. Do not treat it as a production signing identity.
-CI builds the same development artifact without publishing a release.
+CI uploads these disposable APKs as workflow artifacts. They cannot reliably
+update one another because each runner may use a different debug key.
+
+### Publish an installable Core development build
+
+Create and back up a dedicated Android development keystore. Set these GitHub
+Actions repository secrets: `CORE_DEV_KEYSTORE_BASE64` (base64 of the keystore
+file), `CORE_DEV_STORE_PASSWORD`, `CORE_DEV_KEY_ALIAS`, and
+`CORE_DEV_KEY_PASSWORD`. Keep the same key for every Core development release;
+losing it prevents updates over existing installations.
+
+Push an annotated tag matching the `pubspec.yaml` version, such as
+`v0.1.0-dev.1`. The Core app workflow checks the tag and signing inputs, tests
+and builds Core, then publishes the ARM64 and x86_64 APKs as a GitHub
+prerelease. Its Android build number comes from the workflow run number, so a
+later release can update an earlier one. Core lists this prerelease in its own
+project details; choose the APK for your device to install or update Core.
+The first CI-signed build cannot update a locally installed debug-signed Core;
+uninstall that local build first. Stable Core releases and a production signing
+identity have not been configured yet.
 
 ## First version
 
@@ -79,21 +98,52 @@ Android performs final signing, version, and device-compatibility validation.
 Core does not silently replace apps or bypass Android prompts. CI artifacts,
 private releases, split-APK bundles, and background auto-updates are not supported.
 
-The initial catalog contains Trans, TypeSync, Trace, Majika, and khonager.de.
+The catalog contains Core, Trans, TypeSync, Trace, Majika, and khonager.de.
 The website's portfolio repository is not publicly accessible at the time of
 verification; its website works, and its build panel reports unavailable access.
 
 ## Data and limitations
 
-No Core server, account, analytics, or rating service. GitHub receives API
+No Core server, Core account, analytics, or rating service. GitHub receives API
 requests from the device and applies its rate limits. Public browsing needs no
 credentials. Restricted logs can use an optional fine-grained personal access
-token with Actions: read permission for selected repositories. Use Connect GitHub
-inside project details, or the dialog shown when a log needs access. Android
+token with Actions: read permission for selected repositories. The token dialog
+appears when a user requests a restricted log. Android
 stores the token using `flutter_secure_storage`; the web preview holds it only in
-memory until reload. Disconnect from the same dialog to delete the token and
+memory until reload. Disconnect from Manage GitHub access to delete the token and
 clear account-dependent cached metadata. Tokens are never forwarded to signed
 log-download storage URLs. Android backup is disabled.
+
+Core reuses saved release and build data for 30 minutes on launch and allows an
+explicit refresh every two minutes. It remembers GitHub's rate-limit reset time
+across app restarts and pauses requests until then. This reduces anonymous API
+traffic but does not guarantee availability on networks where many users share
+one IP address. Authenticated GitHub access has a larger per-user allowance.
+
+### Optional GitHub sign-in
+
+Core never prompts for sign-in during normal browsing. In an Android build with
+GitHub sign-in configured, a rate-limit notice can be tapped to start sign-in.
+The user copies a short code, approves Core on GitHub, and Core resumes with an
+authenticated API allowance. Android stores the access and refresh tokens in
+secure storage and refreshes expiring access automatically. Disconnect through
+Manage GitHub access in project details. The web preview has no sign-in flow.
+
+To configure this for builds:
+
+1. Register a GitHub App under the account that will own Core. Give it read-only
+   **Actions** and **Contents** repository permissions. Disable webhooks, and
+   enable **Device Flow** under **Identifying and authorizing users**. No client
+   secret or callback endpoint is used by Core.
+2. Copy the app's **Client ID** (not its App ID or client secret) to the GitHub
+   Actions repository variable `CORE_GITHUB_CLIENT_ID`. CI passes it to Android
+   builds as `GITHUB_CLIENT_ID`. For a local build, pass
+   `--dart-define=GITHUB_CLIENT_ID=Iv1.YOUR_CLIENT_ID` to `flutter run` or
+   `flutter build apk`.
+
+Without that client ID, the sign-in action is hidden and public browsing keeps
+working. To read private repositories through GitHub App access, the app must
+also be installed on those repositories and the signed-in user must have access.
 
 Core stores release/build metadata and notification preferences locally. GitHub
 access also allows reading private metadata, but private APK downloads are not

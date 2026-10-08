@@ -6,16 +6,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/project.dart';
 import '../platform/device.dart';
 import 'github.dart';
+import 'github_auth.dart';
 
 class Library extends ChangeNotifier {
   Library({
     required this.preferences,
     required this.github,
     required this.device,
-  });
+    GitHubAuth? auth,
+  }) : auth = auth ?? GitHubAuth(client: github.client);
   final SharedPreferences preferences;
   final GitHub github;
   final Device device;
+  final GitHubAuth auth;
+  GitHubCredentials? _credentials;
   List<Project> projects = [];
   final states = <String, ProjectState>{};
   final downloads = <String, Map<String, dynamic>>{};
@@ -53,10 +57,22 @@ class Library extends ChangeNotifier {
         }
       }
       try {
-        github.token = await device.readToken();
+        final saved = await device.readGitHubAuth();
+        if (saved != null) {
+          _credentials = GitHubCredentials.fromJson(
+            jsonDecode(saved) as Map<String, dynamic>,
+          );
+          github.token = _credentials!.token;
+        } else {
+          github.token = await device.readToken();
+        }
       } catch (_) {
         deviceError =
             'Saved GitHub access could not be read. Reconnect from project details.';
+      }
+      final retryAt = preferences.getInt('github.rateLimitUntil');
+      if (retryAt != null) {
+        github.restoreRateLimit(DateTime.fromMillisecondsSinceEpoch(retryAt));
       }
       changed();
       await pollDevice();
@@ -67,51 +83,89 @@ class Library extends ChangeNotifier {
           pollDevice();
         }
       });
-      await refresh();
+      await _refresh(automatic: true);
     } catch (_) {
       error = 'The catalog could not be loaded. Restart Core to retry.';
       changed();
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh() => _refresh(automatic: false);
+
+  Future<void> _refresh({required bool automatic}) async {
     if (refreshing) return;
     refreshing = true;
     changed();
-    // At most two projects at once; this also avoids a burst on public API limits.
-    for (var i = 0; i < projects.length; i += 2) {
-      await Future.wait(projects.skip(i).take(2).map(refreshProject));
+    for (final project in projects) {
+      if (github.rateLimited) {
+        final state = states[project.id]!;
+        state.releaseError = github.rateLimitMessage;
+        state.buildError = github.rateLimitMessage;
+        continue;
+      }
+      await refreshProject(project, automatic: automatic);
     }
     refreshing = false;
     changed();
   }
 
-  Future<void> refreshProject(Project p) async {
+  Future<void> refreshProject(Project p, {bool automatic = false}) async {
     final s = states[p.id]!;
     if (s.loading) return;
+    if (github.rateLimited) {
+      s.releaseError = github.rateLimitMessage;
+      s.buildError = github.rateLimitMessage;
+      changed();
+      return;
+    }
+    try {
+      await _ensureAuth();
+    } catch (e) {
+      s.releaseError = _message(e);
+      s.buildError = _message(e);
+      changed();
+      return;
+    }
+    final attemptKey = 'refresh.attempt.v1.${p.id}';
+    final previous = preferences.getInt(attemptKey);
+    final interval = automatic
+        ? const Duration(minutes: 30)
+        : const Duration(minutes: 2);
+    if (previous != null &&
+        DateTime.now().difference(
+              DateTime.fromMillisecondsSinceEpoch(previous),
+            ) <
+            interval) {
+      return;
+    }
+    await preferences.setInt(attemptKey, DateTime.now().millisecondsSinceEpoch);
     s.loading = true;
     changed();
     final oldStable = s.latest(false)?.tag, oldDev = s.latest(true)?.tag;
     final oldRuns = {for (final r in s.runs) r.id: r.status};
     final hadBaseline = s.checked != null;
-    await Future.wait([
-      () async {
-        try {
-          s.releases = await github.releases(p);
-          s.releaseError = null;
-        } catch (e) {
-          s.releaseError = _message(e);
-        }
-      }(),
-      () async {
-        try {
-          s.runs = await github.runs(p);
-          s.buildError = null;
-        } catch (e) {
-          s.buildError = _message(e);
-        }
-      }(),
-    ]);
+    try {
+      s.releases = await github.releases(p);
+      s.releaseError = null;
+    } catch (e) {
+      s.releaseError = _message(e);
+    }
+    if (github.rateLimited) {
+      s.buildError = github.rateLimitMessage;
+    } else {
+      try {
+        s.runs = await github.runs(p);
+        s.buildError = null;
+      } catch (e) {
+        s.buildError = _message(e);
+      }
+    }
+    if (github.rateLimitedUntil case final until?) {
+      await preferences.setInt(
+        'github.rateLimitUntil',
+        until.millisecondsSinceEpoch,
+      );
+    }
     if (s.releaseError == null && s.buildError == null) {
       s.checked = DateTime.now();
     }
@@ -168,7 +222,19 @@ class Library extends ChangeNotifier {
 
   String _message(Object e) => e is GitHubException
       ? e.message
+      : e is GitHubAuthException
+      ? e.message
       : 'Could not refresh. Check your connection and retry. Saved information is shown when available.';
+
+  Future<void> _ensureAuth() async {
+    final current = _credentials;
+    if (current == null || !current.needsRefresh) return;
+    final updated = await auth.refresh(current);
+    await device.storeGitHubAuth(jsonEncode(updated.toJson()));
+    _credentials = updated;
+    github.token = updated.token;
+  }
+
   bool enabled(Project p, String type) =>
       preferences.getBool('notify.${p.id}.$type') ?? false;
   Future<bool> setNotification(Project p, String type, bool enabled) async {
@@ -185,11 +251,33 @@ class Library extends ChangeNotifier {
       );
     }
     if (token != null) await github.validateToken(token);
+    await device.storeGitHubAuth(null);
     await device.storeToken(token);
+    _credentials = null;
     github.token = token;
+    await _clearAccountCache();
+  }
+
+  Future<void> connectCredentials(GitHubCredentials credentials) async {
+    if (refreshing || states.values.any((s) => s.loading)) {
+      throw StateError(
+        'Wait for the current refresh to finish, then try again.',
+      );
+    }
+    await github.validateToken(credentials.token);
+    await device.storeGitHubAuth(jsonEncode(credentials.toJson()));
+    await device.storeToken(null);
+    _credentials = credentials;
+    github.token = credentials.token;
+    await _clearAccountCache();
+  }
+
+  Future<void> _clearAccountCache() async {
+    await preferences.remove('github.rateLimitUntil');
     // Clear account-dependent cached data when changing access.
     for (final project in projects) {
       await preferences.remove('cache.v1.${project.id}');
+      await preferences.remove('refresh.attempt.v1.${project.id}');
       states[project.id] = ProjectState();
     }
     changed();

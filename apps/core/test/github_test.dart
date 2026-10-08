@@ -83,11 +83,19 @@ void main() {
     },
   );
   test('rate limit has actionable error', () async {
+    var requests = 0;
     final github = GitHub(
-      client: MockClient((_) async => http.Response('', 403)),
+      client: MockClient((_) async {
+        requests++;
+        return http.Response(
+          '',
+          403,
+          headers: {'x-ratelimit-remaining': '0', 'retry-after': '120'},
+        );
+      }),
     );
-    expect(
-      () => github.releases(project),
+    await expectLater(
+      github.releases(project),
       throwsA(
         isA<GitHubException>().having(
           (e) => e.message,
@@ -96,6 +104,25 @@ void main() {
         ),
       ),
     );
+    expect(github.rateLimited, isTrue);
+    await expectLater(github.runs(project), throwsA(isA<GitHubException>()));
+    expect(requests, 1);
+  });
+  test('access denied is not mistaken for rate limiting', () async {
+    final github = GitHub(
+      client: MockClient((_) async => http.Response('', 403)),
+    );
+    await expectLater(
+      github.runs(project),
+      throwsA(
+        isA<GitHubException>().having(
+          (e) => e.message,
+          'message',
+          contains('denied access'),
+        ),
+      ),
+    );
+    expect(github.rateLimited, isFalse);
   });
   test('ETag revalidation keeps prior result on 304', () async {
     var requests = 0;

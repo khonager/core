@@ -30,10 +30,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("developmentRelease") {
+            val keystore = System.getenv("CORE_RELEASE_KEYSTORE")
+            if (!keystore.isNullOrBlank()) {
+                storeFile = file(keystore)
+                storePassword = System.getenv("CORE_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("CORE_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("CORE_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // This first version is development-only, under the .dev ID.
-            signingConfig = signingConfigs.getByName("debug")
+            // Local builds remain disposable. Published builds use one persistent key.
+            signingConfig = if (System.getenv("CORE_RELEASE_KEYSTORE").isNullOrBlank()) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.getByName("developmentRelease")
+            }
         }
     }
 }

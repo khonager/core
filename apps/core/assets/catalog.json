@@ -1,5 +1,13 @@
 [
   {
+    "id": "core",
+    "name": "Core",
+    "description": "Install and follow updates for your apps in one place.",
+    "repository": "khonager/core",
+    "packageId": "dev.khonager.core.dev",
+    "icon": null
+  },
+  {
     "id": "trans",
     "name": "Trans",
     "description": "Your everyday public transit companion.",

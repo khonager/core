@@ -117,6 +117,8 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpWidget(CoreApp(library: lib));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'trans');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Trans'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

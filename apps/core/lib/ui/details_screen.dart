@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../data/library.dart';
 import '../data/github.dart';
+import '../data/github_auth.dart';
 import '../domain/project.dart';
+import 'github_sign_in_dialog.dart';
 import 'theme.dart';
 
 class DetailsScreen extends StatefulWidget {
@@ -47,6 +49,19 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   Future<void> open(String url) => action(() => lib.device.open(url));
+  Future<void> signIn() async {
+    final credentials = await showDialog<GitHubCredentials>(
+      context: context,
+      builder: (context) =>
+          GitHubSignInDialog(auth: lib.auth, device: lib.device),
+    );
+    if (credentials == null || !mounted) return;
+    await action(() async {
+      await lib.connectCredentials(credentials);
+      message('GitHub connected.');
+    });
+  }
+
   Future<void> logs(BuildRun run) async {
     if (copying) return;
     setState(() => copying = true);
@@ -346,7 +361,18 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 ),
                 const SizedBox(height: 20),
                 if (s.releaseError != null)
-                  Notice(s.releaseError!, onRetry: () => lib.refreshProject(p)),
+                  Notice(
+                    s.releaseError!,
+                    onRetry: lib.github.rateLimited
+                        ? null
+                        : () => lib.refreshProject(p),
+                    onSignIn:
+                        lib.device.android &&
+                            lib.auth.configured &&
+                            lib.github.rateLimited
+                        ? signIn
+                        : null,
+                  ),
                 if (s.loading && release == null)
                   const LinearProgressIndicator()
                 else if (release == null)
@@ -494,7 +520,18 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 ],
               ),
               if (s.buildError != null)
-                Notice(s.buildError!, onRetry: () => lib.refreshProject(p)),
+                Notice(
+                  s.buildError!,
+                  onRetry: lib.github.rateLimited
+                      ? null
+                      : () => lib.refreshProject(p),
+                  onSignIn:
+                      lib.device.android &&
+                          lib.auth.configured &&
+                          lib.github.rateLimited
+                      ? signIn
+                      : null,
+                ),
               if (s.runs.isEmpty && !s.loading && s.buildError == null)
                 const Text('No recent workflow runs.'),
               if (s.loading)
@@ -572,15 +609,12 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 onPressed: () => open(p.githubUrl),
                 child: Text(p.repository),
               ),
-              TextButton.icon(
-                onPressed: busy ? null : access,
-                icon: const Icon(Icons.key_rounded, size: 18),
-                label: Text(
-                  lib.github.connected
-                      ? 'Manage GitHub access'
-                      : 'Connect GitHub',
+              if (lib.github.connected)
+                TextButton.icon(
+                  onPressed: busy ? null : access,
+                  icon: const Icon(Icons.key_rounded, size: 18),
+                  label: const Text('Manage GitHub access'),
                 ),
-              ),
               if (lib.deviceError != null) Notice(lib.deviceError!),
               if (s.checked != null)
                 Center(
@@ -598,19 +632,35 @@ class _DetailsScreenState extends State<DetailsScreen> {
 }
 
 class Notice extends StatelessWidget {
-  const Notice(this.text, {super.key, this.onRetry});
+  const Notice(this.text, {super.key, this.onRetry, this.onSignIn});
   final String text;
   final VoidCallback? onRetry;
+  final VoidCallback? onSignIn;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          text,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-        ),
+        if (onSignIn == null)
+          Text(
+            text,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          )
+        else
+          InkWell(
+            onTap: onSignIn,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '$text Tap to sign in to GitHub.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ),
         if (onRetry != null)
           TextButton(onPressed: onRetry, child: const Text('Retry')),
       ],

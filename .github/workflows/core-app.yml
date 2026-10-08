@@ -3,6 +3,7 @@ on:
   push:
     branches: [main, unstable]
     paths: ['apps/core/**', 'catalog/**', 'scripts/**', '.github/workflows/core-app.yml']
+    tags: ['v*-dev.*']
   pull_request:
     paths: ['apps/core/**', 'catalog/**', 'scripts/**', '.github/workflows/core-app.yml']
   workflow_dispatch:
@@ -30,8 +31,39 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
       - run: flutter test
-      - run: flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64
-      - run: flutter build appbundle
+      - name: Validate development release tag and signing inputs
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CORE_DEV_KEYSTORE_BASE64 }}
+          CORE_RELEASE_STORE_PASSWORD: ${{ secrets.CORE_DEV_STORE_PASSWORD }}
+          CORE_RELEASE_KEY_ALIAS: ${{ secrets.CORE_DEV_KEY_ALIAS }}
+          CORE_RELEASE_KEY_PASSWORD: ${{ secrets.CORE_DEV_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\)+[0-9]*$/\1/p' pubspec.yaml)
+          [[ -n "$version" && "$GITHUB_REF_NAME" =~ ^v${version}-dev\.[0-9]+$ ]] || { echo 'Tag must match the pubspec version and use vVERSION-dev.RUN.' >&2; exit 1; }
+          [[ -n "$KEYSTORE_BASE64" && -n "$CORE_RELEASE_STORE_PASSWORD" && -n "$CORE_RELEASE_KEY_ALIAS" && -n "$CORE_RELEASE_KEY_PASSWORD" ]] || { echo 'Core development signing secrets are required.' >&2; exit 1; }
+          keystore="$RUNNER_TEMP/core-development.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          [[ -s "$keystore" ]] || { echo 'Core development keystore is empty.' >&2; exit 1; }
+          {
+            echo "CORE_RELEASE_KEYSTORE=$keystore"
+            echo "CORE_RELEASE_STORE_PASSWORD=$CORE_RELEASE_STORE_PASSWORD"
+            echo "CORE_RELEASE_KEY_ALIAS=$CORE_RELEASE_KEY_ALIAS"
+            echo "CORE_RELEASE_KEY_PASSWORD=$CORE_RELEASE_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+      - name: Build APKs
+        env:
+          CORE_GITHUB_CLIENT_ID: ${{ vars.CORE_GITHUB_CLIENT_ID }}
+        run: |
+          args=()
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            args+=(--build-name "${GITHUB_REF_NAME#v}" --build-number "$GITHUB_RUN_NUMBER")
+          fi
+          flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64 --dart-define="GITHUB_CLIENT_ID=$CORE_GITHUB_CLIENT_ID" "${args[@]}"
+      - run: flutter build appbundle --dart-define="GITHUB_CLIENT_ID=$CORE_GITHUB_CLIENT_ID"
+        env:
+          CORE_GITHUB_CLIENT_ID: ${{ vars.CORE_GITHUB_CLIENT_ID }}
       - run: flutter build web --no-web-resources-cdn
       - uses: actions/upload-artifact@v4
         with:
@@ -39,3 +71,23 @@ jobs:
           path: apps/core/build/app/outputs/flutter-apk/app-*-release.apk
           retention-days: 14
           if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-android-development
+          path: dist
+      - name: Publish development release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Core $GITHUB_REF_NAME" \
+            --notes "Development build from $GITHUB_SHA. Signed with the Core development key." \
+            --prerelease --verify-tag

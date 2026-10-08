@@ -53,6 +53,7 @@
         <package android:name="de.khonager.trans" />
         <package android:name="de.khonager.trans.unstable" />
         <package android:name="de.khonager.typesync" />
+        <package android:name="dev.khonager.core.dev" />
         <!-- catalog packages:end -->
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
         <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>

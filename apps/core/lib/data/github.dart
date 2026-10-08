@@ -15,9 +15,15 @@ class GitHub {
   GitHub({http.Client? client}) : client = client ?? http.Client();
   final http.Client client;
   String? _token;
+  DateTime? _rateLimitedUntil;
   bool get connected => _token != null;
+  bool get rateLimited =>
+      _rateLimitedUntil != null && DateTime.now().isBefore(_rateLimitedUntil!);
+  DateTime? get rateLimitedUntil => _rateLimitedUntil;
+  void restoreRateLimit(DateTime? until) => _rateLimitedUntil = until;
   set token(String? value) {
     _token = value;
+    _rateLimitedUntil = null;
     _cache.clear();
   }
 
@@ -42,6 +48,7 @@ class GitHub {
 
   final Map<String, (String?, dynamic)> _cache = {};
   Future<dynamic> get(String path, {Map<String, String>? query}) async {
+    if (rateLimited) throw GitHubException(rateLimitMessage, statusCode: 429);
     final uri = Uri.https('api.github.com', path, query);
     final cacheKey = uri.toString();
     final cached = _cache[cacheKey];
@@ -54,11 +61,29 @@ class GitHub {
           },
         )
         .timeout(const Duration(seconds: 20));
+    final remaining = response.headers['x-ratelimit-remaining'];
+    final isRateLimit =
+        response.statusCode == 429 ||
+        (response.statusCode == 403 &&
+            (remaining == '0' ||
+                response.body.toLowerCase().contains('rate limit')));
+    if (isRateLimit || remaining == '0') {
+      final retrySeconds = int.tryParse(response.headers['retry-after'] ?? '');
+      final resetSeconds = int.tryParse(
+        response.headers['x-ratelimit-reset'] ?? '',
+      );
+      _rateLimitedUntil = retrySeconds != null
+          ? DateTime.now().add(Duration(seconds: retrySeconds))
+          : remaining == '0' && resetSeconds != null
+          ? DateTime.fromMillisecondsSinceEpoch(resetSeconds * 1000)
+          : DateTime.now().add(const Duration(minutes: 1));
+    }
     if (response.statusCode == 304 && cached != null) return cached.$2;
     if (response.statusCode != 200) {
       throw GitHubException(switch (response.statusCode) {
-        403 || 429 =>
-          'GitHub access or rate limit reached. Try again later or open GitHub.',
+        403 || 429 when isRateLimit => rateLimitMessage,
+        403 =>
+          'GitHub denied access to this resource. Connect GitHub or open it in a browser.',
         404 => 'Repository or resource is unavailable. It may be private.',
         401 => 'GitHub requires authentication for this resource.',
         _ =>
@@ -69,6 +94,10 @@ class GitHub {
     _cache[cacheKey] = (response.headers['etag'], data);
     return data;
   }
+
+  String get rateLimitMessage => rateLimited
+      ? 'GitHub rate limit reached. Try again after ${_rateLimitedUntil!.toLocal().hour.toString().padLeft(2, '0')}:${_rateLimitedUntil!.toLocal().minute.toString().padLeft(2, '0')}.'
+      : 'GitHub rate limit reached. Try again later.';
 
   Future<List<Release>> releases(Project p) async {
     final releases = <Release>[];

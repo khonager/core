@@ -9,6 +9,18 @@ class Device {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   Future<String?> readToken() async =>
       android ? const FlutterSecureStorage().read(key: 'github.token') : null;
+  Future<String?> readGitHubAuth() async =>
+      android ? const FlutterSecureStorage().read(key: 'github.auth') : null;
+  Future<void> storeGitHubAuth(String? value) async {
+    if (!android) return;
+    const storage = FlutterSecureStorage();
+    if (value == null) {
+      await storage.delete(key: 'github.auth');
+    } else {
+      await storage.write(key: 'github.auth', value: value);
+    }
+  }
+
   Future<void> storeToken(String? token) async {
     if (!android) return;
     const storage = FlutterSecureStorage();
