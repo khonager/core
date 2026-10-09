@@ -21,6 +21,18 @@ The first development version lives in [`apps/core`](apps/core/README.md).
 Edit [`catalog/projects.json`](catalog/projects.json) to curate the library.
 See the app README for running, building, and current limitations.
 
+From the repository root, enter `nix develop` once per terminal. Then use the
+root `./core` command for Flutter tasks without changing directories:
+
+```sh
+./core pub get
+./core run
+./core test
+./core build apk --release --split-per-abi --target-platform android-arm64,android-x64
+```
+
+The APKs are written under `apps/core/build/app/outputs/flutter-apk/`.
+
 ## Start here
 
 - [`docs/product.md`](docs/product.md) — product scope and decision principles

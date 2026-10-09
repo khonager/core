@@ -6,32 +6,32 @@ and templates remain in this repository.
 
 ## Run
 
-From the repository root, optionally enter `nix develop` (the committed lock pins
-Nixpkgs). Otherwise install Flutter 3.47.0, Java 17, and Android SDK/NDK components
-required by Flutter, then run `flutter doctor` to check the toolchain.
+From the repository root, enter `nix develop` (the committed lock pins Nixpkgs).
+The shell provides Flutter 3.47.0, Java 17, and the required Android SDK/NDK.
+The root `./core` command runs Flutter inside `apps/core`, so you can stay at the
+repository root:
 
 ```sh
 python3 scripts/sync_catalog.py
-cd apps/core
-flutter pub get
-flutter run
+./core pub get
+./core run
 ```
 
-For a browser preview: `flutter run -d chrome`. The web target is a design and
+For a browser preview: `./core run -d chrome`. The web target is a design and
 catalog preview; installing/uninstalling apps and notifications require Android.
 
 ```sh
-dart format --output=none --set-exit-if-changed lib test
-flutter analyze
-flutter test
-flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64
-flutter build appbundle
-flutter build web --no-web-resources-cdn
+dart format --output=none --set-exit-if-changed apps/core/lib apps/core/test
+./core analyze
+./core test
+./core build apk --release --split-per-abi --target-platform android-arm64,android-x64
+./core build appbundle
+./core build web --no-web-resources-cdn
 ```
 
-Use `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` on modern Android
-phones; `app-x86_64-release.apk` is for x86 emulators. The release compiler reduces
-size, but this is still a
+Use `apps/core/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` on modern
+Android phones; `app-x86_64-release.apk` is for x86 emulators. The release compiler
+reduces size, but this is still a
 **development build**, labeled **Core Dev**, with package ID `dev.khonager.core.dev`
 and a development signing key. Do not treat it as a production signing identity.
 CI uploads these disposable APKs as workflow artifacts. They cannot reliably
