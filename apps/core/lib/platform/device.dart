@@ -7,12 +7,16 @@ class Device {
   static const channel = MethodChannel('dev.khonager.core/device');
   bool get android =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  Future<String?> readToken() async =>
-      android ? const FlutterSecureStorage().read(key: 'github.token') : null;
-  Future<String?> readGitHubAuth() async =>
-      android ? const FlutterSecureStorage().read(key: 'github.auth') : null;
+  bool get linux => !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
+  bool get secureStorage => android || linux;
+  Future<String?> readToken() async => secureStorage
+      ? const FlutterSecureStorage().read(key: 'github.token')
+      : null;
+  Future<String?> readGitHubAuth() async => secureStorage
+      ? const FlutterSecureStorage().read(key: 'github.auth')
+      : null;
   Future<void> storeGitHubAuth(String? value) async {
-    if (!android) return;
+    if (!secureStorage) return;
     const storage = FlutterSecureStorage();
     if (value == null) {
       await storage.delete(key: 'github.auth');
@@ -22,7 +26,7 @@ class Device {
   }
 
   Future<void> storeToken(String? token) async {
-    if (!android) return;
+    if (!secureStorage) return;
     const storage = FlutterSecureStorage();
     if (token == null) {
       await storage.delete(key: 'github.token');

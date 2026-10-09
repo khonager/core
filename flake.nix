@@ -22,7 +22,11 @@
         };
       in {
         devShells.default = pkgs.mkShell {
-          packages = [ pkgs.flutter pkgs.jdk17 pkgs.python3 android.androidsdk ];
+          packages = [
+            pkgs.flutter pkgs.jdk17 pkgs.python3 android.androidsdk
+            pkgs.clang pkgs.cmake pkgs.ninja pkgs.pkg-config
+            pkgs.gtk3 pkgs.libsecret
+          ];
           ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${android.androidsdk}/libexec/android-sdk";
           JAVA_HOME = pkgs.jdk17.home;

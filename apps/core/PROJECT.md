@@ -5,9 +5,10 @@
 - Repository: lives alongside Core principles, documentation, and templates.
 - Primary flow: search/select project → choose stable/dev release → download →
   Android confirmation → installed version; or inspect build → copy log/open GitHub.
-- Target: Android first; web preview for design review. Other native targets later.
+- Target: Android first; Linux desktop for browsing and copying build logs;
+  web preview for design review.
 - Data: GitHub API + bundled curated catalog, local cache/preferences. Optional
-  GitHub token for restricted logs, secure on Android and memory-only on web.
+- GitHub token for restricted logs, secure on Android/Linux and memory-only on web.
 - User's visual direction: warm beige/eggshell/yellow canvas, large rounded-square
   icons, bold names, smaller muted descriptions, search above a simple list.
 - Navigation: Library → Project details. Releases and activity are inline.

@@ -40,7 +40,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
     } catch (e) {
       message(
         e is PlatformException
-            ? e.message ?? 'Android could not complete this action.'
+            ? e.message ?? 'This device could not complete the action.'
             : e.toString(),
       );
     } finally {
@@ -93,9 +93,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                lib.device.android
-                    ? 'For restricted build logs, add a fine-grained GitHub token with Actions: read permission for your projects. It is stored securely on this device.'
-                    : 'Tokens in this browser preview are held in memory for this session only. Log downloads may require the Android app.',
+                lib.device.secureStorage
+                    ? 'For restricted build logs, add a fine-grained GitHub token with Actions: read permission for your projects. It is stored in this device\'s secure storage.'
+                    : 'Tokens in this browser preview are held in memory for this session only. Log downloads may require the desktop or Android app.',
               ),
               const SizedBox(height: 16),
               TextField(
@@ -367,7 +367,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                         ? null
                         : () => lib.refreshProject(p),
                     onSignIn:
-                        lib.device.android &&
+                        lib.device.secureStorage &&
                             lib.auth.configured &&
                             lib.github.rateLimited
                         ? signIn
@@ -526,7 +526,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       ? null
                       : () => lib.refreshProject(p),
                   onSignIn:
-                      lib.device.android &&
+                      lib.device.secureStorage &&
                           lib.auth.configured &&
                           lib.github.rateLimited
                       ? signIn

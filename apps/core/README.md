@@ -20,6 +20,28 @@ python3 scripts/sync_catalog.py
 For a browser preview: `./core run -d chrome`. The web target is a design and
 catalog preview; installing/uninstalling apps and notifications require Android.
 
+### Linux desktop
+
+On a Linux laptop with a graphical session, run from the repository root:
+
+```sh
+nix develop
+./core pub get
+./core run -d linux
+```
+
+Choose a project, then use **Build activity → Copy full log** on a completed
+workflow run. The app copies all available job logs for that run to the system
+clipboard; paste them into an editor or issue. The build card also opens the run
+on GitHub. If a log needs access, use **Manage GitHub access** in project details
+to connect a fine-grained token with **Actions: read** permission. Linux saves
+it in the desktop Secret Service keyring (such as GNOME Keyring or KWallet).
+You can disconnect there to remove it. Public logs work without a token.
+
+The Linux target shows the catalog, releases, and build activity. APK downloads
+open in a browser; installing apps and notifications still require Android.
+`./core build linux` writes a bundle under `apps/core/build/linux/x64/release/bundle/`.
+
 ```sh
 dart format --output=none --set-exit-if-changed apps/core/lib apps/core/test
 ./core analyze
@@ -108,8 +130,8 @@ No Core server, Core account, analytics, or rating service. GitHub receives API
 requests from the device and applies its rate limits. Public browsing needs no
 credentials. Restricted logs can use an optional fine-grained personal access
 token with Actions: read permission for selected repositories. The token dialog
-appears when a user requests a restricted log. Android
-stores the token using `flutter_secure_storage`; the web preview holds it only in
+appears when a user requests a restricted log. Android and Linux
+store the token using `flutter_secure_storage`; the web preview holds it only in
 memory until reload. Disconnect from Manage GitHub access to delete the token and
 clear account-dependent cached metadata. Tokens are never forwarded to signed
 log-download storage URLs. Android backup is disabled.

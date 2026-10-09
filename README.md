@@ -27,11 +27,14 @@ root `./core` command for Flutter tasks without changing directories:
 ```sh
 ./core pub get
 ./core run
+./core run -d linux
 ./core test
 ./core build apk --release --split-per-abi --target-platform android-arm64,android-x64
 ```
 
 The APKs are written under `apps/core/build/app/outputs/flutter-apk/`.
+For desktop build activity and copyable GitHub job logs, use the Linux target;
+see [apps/core/README.md](apps/core/README.md#linux-desktop).
 
 ## Start here
 
