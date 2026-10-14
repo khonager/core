@@ -2,16 +2,22 @@ name: Core app
 on:
   push:
     branches: [main, unstable]
-    paths: ['apps/core/**', 'catalog/**', 'scripts/**', '.github/workflows/core-app.yml']
     tags: ['v*-dev.*']
   pull_request:
     paths: ['apps/core/**', 'catalog/**', 'scripts/**', '.github/workflows/core-app.yml']
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: core-app-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      PUBLISH_DEVELOPMENT: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
+    outputs:
+      development-version: ${{ steps.development.outputs.version }}
     defaults:
       run:
         working-directory: apps/core
@@ -31,8 +37,9 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze
       - run: flutter test
-      - name: Validate development release tag and signing inputs
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Prepare development version and signing inputs
+        id: development
+        if: env.PUBLISH_DEVELOPMENT == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.CORE_DEV_KEYSTORE_BASE64 }}
           CORE_RELEASE_STORE_PASSWORD: ${{ secrets.CORE_DEV_STORE_PASSWORD }}
@@ -41,7 +48,16 @@ jobs:
         run: |
           set -euo pipefail
           version=$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\)+[0-9]*$/\1/p' pubspec.yaml)
-          [[ -n "$version" && "$GITHUB_REF_NAME" =~ ^v${version}-dev\.[0-9]+$ ]] || { echo 'Tag must match the pubspec version and use vVERSION-dev.RUN.' >&2; exit 1; }
+          [[ -n "$version" ]] || { echo 'pubspec.yaml must contain VERSION+BUILD.' >&2; exit 1; }
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            suffix="${GITHUB_REF_NAME#v$version-dev.}"
+            [[ "$GITHUB_REF_NAME" == "v$version-dev."* && "$suffix" =~ ^[0-9]+$ ]] || { echo 'Tag must match the pubspec version and use vVERSION-dev.RUN.' >&2; exit 1; }
+            build_name="${GITHUB_REF_NAME#v}"
+          else
+            build_name="$version-dev.$GITHUB_RUN_NUMBER"
+          fi
+          echo "version=$build_name" >> "$GITHUB_OUTPUT"
+          echo "CORE_BUILD_NAME=$build_name" >> "$GITHUB_ENV"
           [[ -n "$KEYSTORE_BASE64" && -n "$CORE_RELEASE_STORE_PASSWORD" && -n "$CORE_RELEASE_KEY_ALIAS" && -n "$CORE_RELEASE_KEY_PASSWORD" ]] || { echo 'Core development signing secrets are required.' >&2; exit 1; }
           keystore="$RUNNER_TEMP/core-development.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
@@ -57,8 +73,8 @@ jobs:
           CORE_GITHUB_CLIENT_ID: ${{ vars.CORE_GITHUB_CLIENT_ID }}
         run: |
           args=()
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            args+=(--build-name "${GITHUB_REF_NAME#v}" --build-number "$GITHUB_RUN_NUMBER")
+          if [[ "$PUBLISH_DEVELOPMENT" == true ]]; then
+            args+=(--build-name "$CORE_BUILD_NAME" --build-number "$GITHUB_RUN_NUMBER")
           fi
           flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64 --dart-define="GITHUB_CLIENT_ID=$CORE_GITHUB_CLIENT_ID" "${args[@]}"
       - run: flutter build appbundle --dart-define="GITHUB_CLIENT_ID=$CORE_GITHUB_CLIENT_ID"
@@ -72,7 +88,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     needs: android
     runs-on: ubuntu-latest
     permissions:
@@ -85,7 +101,28 @@ jobs:
       - name: Publish development release
         env:
           GH_TOKEN: ${{ github.token }}
+          DEVELOPMENT_VERSION: ${{ needs.android.outputs.development-version }}
         run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            # Keep one rolling prerelease; stable and manually tagged releases stay intact.
+            release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq '.[] | select(.tag_name == "dev") | .id')
+            if [[ -n "$release_id" ]]; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+            fi
+            tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/dev" \
+              --jq '.[] | select(.ref == "refs/tags/dev") | .ref')
+            if [[ -n "$tag_ref" ]]; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/dev"
+            fi
+            gh release create dev dist/*.apk \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Core $DEVELOPMENT_VERSION" \
+              --notes "Latest development build from main at $GITHUB_SHA. Signed with the Core development key." \
+              --prerelease --latest=false
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" dist/*.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Core $GITHUB_REF_NAME" \
