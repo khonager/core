@@ -66,6 +66,11 @@ class Device {
   Future<void> cancel(String id) => channel.invokeMethod('cancel', {'id': id});
   Future<void> uninstall(String packageId) =>
       channel.invokeMethod('uninstall', {'package': packageId});
+  Future<void> launchApp(String packageId) async {
+    if (!android) throw StateError('Opening installed apps requires Android.');
+    await channel.invokeMethod('launchApp', {'package': packageId});
+  }
+
   Future<bool> requestNotifications() async =>
       android && (await channel.invokeMethod<bool>('notifications')) == true;
   Future<void> notify(String id, String title, String body) async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data/library.dart';
 import '../domain/project.dart';
 import 'details_screen.dart';
@@ -31,6 +32,20 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) widget.library.pollDevice();
+  }
+
+  Future<void> openApp(String packageId) async {
+    try {
+      await widget.library.device.launchApp(packageId);
+    } catch (e) {
+      if (!mounted) return;
+      final reason = e is PlatformException
+          ? e.message ?? 'Android could not open this app.'
+          : 'This app could not be opened.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(reason)));
+    }
   }
 
   @override
@@ -130,11 +145,18 @@ class _LibraryScreenState extends State<LibraryScreen>
                         itemBuilder: (context, index) {
                           final p = items[index];
                           final s = widget.library.states[p.id]!;
+                          final installedPackage = [p.packageId, p.devPackageId]
+                              .whereType<String>()
+                              .where(widget.library.installed.containsKey)
+                              .firstOrNull;
                           return AppRow(
                             project: p,
                             state: s,
                             transfer: widget.library.transfer(p),
                             selected: wide && selected?.id == p.id,
+                            onOpen: installedPackage == null
+                                ? null
+                                : () => openApp(installedPackage),
                             onTap: () {
                               if (wide) {
                                 setState(() => selected = p);
@@ -190,12 +212,14 @@ class AppRow extends StatelessWidget {
     required this.project,
     required this.state,
     required this.onTap,
+    this.onOpen,
     this.transfer,
     this.selected = false,
   });
   final Project project;
   final ProjectState state;
   final VoidCallback onTap;
+  final VoidCallback? onOpen;
   final Map<String, dynamic>? transfer;
   final bool selected;
   @override
@@ -213,6 +237,7 @@ class AppRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
+          splashFactory: InkRipple.splashFactory,
           child: Padding(
             padding: const EdgeInsets.only(top: 20),
             child: Column(
@@ -220,7 +245,23 @@ class AppRow extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    ProjectIcon(project),
+                    Tooltip(
+                      message: onOpen == null
+                          ? 'View ${project.name} details'
+                          : 'Open ${project.name}',
+                      child: Semantics(
+                        button: true,
+                        label: onOpen == null
+                            ? 'View ${project.name} details'
+                            : 'Open ${project.name}',
+                        child: InkWell(
+                          onTap: onOpen ?? onTap,
+                          borderRadius: BorderRadius.circular(20),
+                          splashFactory: InkRipple.splashFactory,
+                          child: ProjectIcon(project),
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 18),
                     Expanded(
                       child: Column(

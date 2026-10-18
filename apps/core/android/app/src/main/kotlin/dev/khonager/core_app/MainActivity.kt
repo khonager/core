@@ -77,6 +77,13 @@ class MainActivity : FlutterActivity() {
                             startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")))
                             result.success(null)
                         }
+                        "launchApp" -> {
+                            require(!pkg.isNullOrBlank()) { "This project has no configured Android package ID." }
+                            val intent = packageManager.getLaunchIntentForPackage(pkg)
+                                ?: throw IllegalStateException("This app cannot be opened from Core.")
+                            startActivity(intent)
+                            result.success(null)
+                        }
                         "notifications" -> {
                             val notifications = getSystemService(NotificationManager::class.java)
                             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

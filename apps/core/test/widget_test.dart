@@ -11,8 +11,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'github_test.dart' show release, run;
 
 class TestDevice extends Device {
+  final launchedPackages = <String>[];
   @override
   bool get android => false;
+  @override
+  Future<void> launchApp(String packageId) async {
+    launchedPackages.add(packageId);
+  }
 }
 
 Future<Library> library({bool offline = false}) async {
@@ -48,6 +53,34 @@ Future<Library> library({bool offline = false}) async {
 }
 
 void main() {
+  testWidgets('installed app icon opens the app while row opens details', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    lib.installed['de.khonager.trans'] = '1.0';
+    lib.changed();
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open Trans'));
+    await tester.pumpAndSettle();
+    expect((lib.device as TestDevice).launchedPackages, ['de.khonager.trans']);
+    expect(find.text('v1.2.0'), findsNothing);
+    lib.installed.remove('de.khonager.trans');
+    lib.installed['de.khonager.trans.unstable'] = '1.1-dev';
+    lib.changed();
+    await tester.pump();
+    await tester.tap(find.byTooltip('Open Trans'));
+    await tester.pumpAndSettle();
+    expect((lib.device as TestDevice).launchedPackages, [
+      'de.khonager.trans',
+      'de.khonager.trans.unstable',
+    ]);
+    await tester.tap(find.text('Trans'));
+    await tester.pumpAndSettle();
+    expect(find.text('v1.2.0'), findsOneWidget);
+  });
+
   testWidgets('search, details, release channels and notification sheet work', (
     tester,
   ) async {
