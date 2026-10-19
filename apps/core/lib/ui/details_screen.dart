@@ -38,11 +38,42 @@ class _DetailsScreenState extends State<DetailsScreen> {
     try {
       await work();
     } catch (e) {
-      message(
-        e is PlatformException
-            ? e.message ?? 'This device could not complete the action.'
-            : e.toString(),
-      );
+      if (e is PlatformException && e.code == 'signing' && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Cannot update this app'),
+            content: Text(
+              '${e.message}\n\nDownload the release APK in your browser before uninstalling the existing app. Then install the downloaded APK from your browser or Files. Uninstalling clears the app’s saved data.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              if (lib.states[p.id]?.latest(dev) != null)
+                FilledButton(
+                  onPressed: () async {
+                    final url = lib.states[p.id]!.latest(dev)!.url;
+                    Navigator.pop(context);
+                    try {
+                      await lib.device.open(url);
+                    } catch (_) {
+                      message('Could not open this release in your browser.');
+                    }
+                  },
+                  child: const Text('Open release'),
+                ),
+            ],
+          ),
+        );
+      } else {
+        message(
+          e is PlatformException
+              ? e.message ?? 'This device could not complete the action.'
+              : e.toString(),
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

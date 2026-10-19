@@ -4,6 +4,7 @@ import 'package:core_app/data/library.dart';
 import 'package:core_app/main.dart';
 import 'package:core_app/platform/device.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,11 +13,26 @@ import 'github_test.dart' show release, run;
 
 class TestDevice extends Device {
   final launchedPackages = <String>[];
+  final openedUrls = <String>[];
   @override
   bool get android => false;
   @override
   Future<void> launchApp(String packageId) async {
     launchedPackages.add(packageId);
+  }
+
+  @override
+  Future<void> install(String id) async {
+    throw PlatformException(
+      code: 'signing',
+      message:
+          'Android cannot update this app because the installed copy uses a different signing key.',
+    );
+  }
+
+  @override
+  Future<void> open(String url) async {
+    openedUrls.add(url);
   }
 }
 
@@ -102,6 +118,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Failed builds'), findsOneWidget);
     expect(find.text('Ratings'), findsNothing);
+  });
+  testWidgets('signing mismatch explains recovery and opens the release', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    lib.downloads['core.dev'] = {'phase': 'ready'};
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Development'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install downloaded APK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cannot update this app'), findsOneWidget);
+    expect(find.textContaining('different signing key'), findsOneWidget);
+    await tester.tap(find.text('Open release'));
+    await tester.pumpAndSettle();
+    expect((lib.device as TestDevice).openedUrls, [
+      'https://github.com/owner/sample/releases/tag/v1.3.0-dev.4',
+    ]);
   });
   testWidgets('catalog remains usable offline and explains missing data', (
     tester,

@@ -73,9 +73,13 @@ and builds Core, then publishes the ARM64 and x86_64 APKs as a GitHub
 prerelease. Its Android build number comes from the workflow run number, so a
 later release can update an earlier one. Core lists this prerelease in its own
 project details; choose the APK for your device to install or update Core.
-The first CI-signed build cannot update a locally installed debug-signed Core;
-uninstall that local build first. Stable Core releases and a production signing
-identity have not been configured yet.
+The first CI-signed build cannot update a locally installed debug-signed Core or
+one signed by another development key. Download the release APK to your browser's
+Downloads folder first, then uninstall Core Dev and install that downloaded APK.
+Uninstalling clears Core's saved settings and GitHub sign-in; the APK downloaded
+inside Core is also removed with the app. Future builds signed with the same
+development key can update in place. Stable Core releases and a production
+signing identity have not been configured yet.
 
 ## First version
 

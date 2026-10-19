@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -57,6 +58,29 @@ class MainActivity : FlutterActivity() {
                                 ?: throw IllegalStateException("This download is not a valid APK.")
                             require(info.packageName == prefs.getString("$id.package", null)) {
                                 "This APK has a different package ID. Update the catalog before installing it."
+                            }
+                            val signingFlags = if (Build.VERSION.SDK_INT >= 28) {
+                                PackageManager.GET_SIGNING_CERTIFICATES
+                            } else {
+                                @Suppress("DEPRECATION")
+                                PackageManager.GET_SIGNATURES
+                            }
+                            val downloaded = packageManager.getPackageArchiveInfo(file.path, signingFlags)
+                                ?: throw IllegalStateException("This download is not a valid APK.")
+                            val current = try {
+                                packageManager.getPackageInfo(info.packageName, signingFlags)
+                            } catch (_: PackageManager.NameNotFoundException) {
+                                null
+                            }
+                            if (current != null) {
+                                val existingCertificates = signingCertificates(current)
+                                val newCertificates = signingCertificates(downloaded)
+                                if (existingCertificates.isNotEmpty() && newCertificates.isNotEmpty() &&
+                                    existingCertificates.intersect(newCertificates).isEmpty()
+                                ) {
+                                    result.error("signing", "Android cannot update this app because the installed copy uses a different signing key.", null)
+                                    return@setMethodCallHandler
+                                }
                             }
                             if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
                                 startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
@@ -111,6 +135,17 @@ class MainActivity : FlutterActivity() {
     private fun apkFile(id: String): File {
         require(id.matches(Regex("[a-zA-Z0-9._-]+")))
         return File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "$id.apk")
+    }
+    private fun signingCertificates(info: PackageInfo): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= 28) {
+            val signingInfo = info.signingInfo ?: return emptySet()
+            if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners
+            else signingInfo.signingCertificateHistory
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures
+        }
+        return signatures?.map { it.toCharsString() }?.toSet() ?: emptySet()
     }
     private fun cancel(id: String) {
         val downloadId = prefs.getLong("$id.download", -1)
