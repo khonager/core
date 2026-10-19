@@ -5,7 +5,7 @@
     "description": "Install and follow updates for your apps in one place.",
     "repository": "khonager/core",
     "packageId": "dev.khonager.core.dev",
-    "icon": null
+    "icon": "assets/icons/core.png"
   },
   {
     "id": "trans",
@@ -32,7 +32,7 @@
     "description": "A private, local-first home for Matrix conversations.",
     "repository": "khonager/Trace",
     "packageId": "chat.trace.client",
-    "icon": null
+    "icon": "assets/icons/trace.png"
   },
   {
     "id": "majika",
@@ -48,14 +48,14 @@
     "description": "Record and revisit your dreams when you wake.",
     "repository": "khonager/dreamcord",
     "packageId": "com.example.dreamcord",
-    "icon": null
+    "icon": "assets/icons/dreamcord.png"
   },
   {
     "id": "gram",
     "name": "Gram",
     "description": "A 3D sentient weapon game.",
     "repository": "khonager/gram",
-    "icon": null
+    "icon": "assets/icons/gram.png"
   },
   {
     "id": "riverfold",
@@ -63,7 +63,7 @@
     "description": "A card roguelike with hidden cards, a river, and aquatic companions.",
     "repository": "khonager/Riverfold",
     "packageId": "org.riverfold.game",
-    "icon": null
+    "icon": "assets/icons/riverfold.png"
   },
   {
     "id": "tipstroke",
@@ -71,7 +71,7 @@
     "description": "A local-first drawing app for Android and Linux.",
     "repository": "khonager/TipStroke",
     "packageId": "dev.tipstroke.app",
-    "icon": null
+    "icon": "assets/icons/tipstroke.png"
   },
   {
     "id": "motomeru",
@@ -79,7 +79,7 @@
     "description": "A search-focused Android launcher.",
     "repository": "khonager/Motomeru",
     "packageId": "de.mm20.launcher2.release",
-    "icon": null
+    "icon": "assets/icons/motomeru.png"
   },
   {
     "id": "adwise",
@@ -88,7 +88,7 @@
     "repository": "khonager/adwise",
     "website": "https://getadwise.web.app",
     "packageId": "com.khonager.adwise",
-    "icon": null
+    "icon": "assets/icons/adwise.png"
   },
   {
     "id": "files",
@@ -96,7 +96,7 @@
     "description": "A file portal for sharing and managing files.",
     "repository": "khonager/files",
     "website": "https://files.khonager.de",
-    "icon": null
+    "icon": "assets/icons/files.png"
   },
   {
     "id": "wisec",
@@ -104,7 +104,7 @@
     "description": "A branded file sharing portal.",
     "repository": "khonager/files",
     "website": "https://wisec-files.web.app",
-    "icon": null
+    "icon": "assets/icons/wisec.png"
   },
   {
     "id": "safezone",
@@ -112,7 +112,7 @@
     "description": "A branded file sharing portal.",
     "repository": "khonager/files",
     "website": "https://safezone-files.web.app",
-    "icon": null
+    "icon": "assets/icons/safezone.png"
   },
   {
     "id": "karma-tracker",
@@ -120,7 +120,7 @@
     "description": "Track your karma in a simple web app.",
     "repository": "khonager/karma-tracker",
     "website": "https://karma-tracker-web.web.app",
-    "icon": null
+    "icon": "assets/icons/karma-tracker.png"
   },
   {
     "id": "roid",
@@ -129,7 +129,7 @@
     "repository": "khonager/roid",
     "website": "https://solaroid-lunaroid.web.app",
     "packageId": "com.solaroid.roid",
-    "icon": null
+    "icon": "assets/icons/roid.png"
   },
   {
     "id": "website",
@@ -137,6 +137,6 @@
     "description": "My projects, experiments, and a little about me.",
     "repository": "khonager/portofolio",
     "website": "https://khonager.de",
-    "icon": null
+    "icon": "assets/icons/website.png"
   }
 ]
