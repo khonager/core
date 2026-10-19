@@ -162,6 +162,10 @@ void main() {
       final lib = (await tester.runAsync(() => library()))!;
       addTearDown(lib.dispose);
       await tester.pumpWidget(CoreApp(library: lib));
+      final context = tester.element(find.byType(MaterialApp));
+      for (final icon in lib.projects.map((p) => p.icon).whereType<String>()) {
+        await tester.runAsync(() => precacheImage(AssetImage(icon), context));
+      }
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await expectLater(
