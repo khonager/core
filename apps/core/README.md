@@ -124,9 +124,10 @@ Android performs final signing, version, and device-compatibility validation.
 Core does not silently replace apps or bypass Android prompts. CI artifacts,
 private releases, split-APK bundles, and background auto-updates are not supported.
 
-The catalog contains Core, Trans, TypeSync, Trace, Majika, and khonager.de.
-The website's portfolio repository is not publicly accessible at the time of
-verification; its website works, and its build panel reports unavailable access.
+The catalog includes the owner's apps and verified websites. App entries can
+also link to their websites; standalone sites such as Files and Karma Tracker
+have their own entries. Some repositories are private, so public browsing may
+show unavailable release and build data for those entries.
 
 ## Data and limitations
 

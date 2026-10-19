@@ -12,6 +12,7 @@
     "name": "Trans",
     "description": "Your everyday public transit companion.",
     "repository": "khonager/Trans",
+    "website": "https://trans.khonager.de",
     "packageId": "de.khonager.trans",
     "icon": "assets/icons/trans.png",
     "devPackageId": "de.khonager.trans.unstable"
@@ -21,6 +22,7 @@
     "name": "TypeSync",
     "description": "Notes, ideas, and writing, wherever you are.",
     "repository": "khonager/TypeSync",
+    "website": "https://typesync.khonager.de",
     "packageId": "de.khonager.typesync",
     "icon": "assets/icons/typesync.png"
   },
@@ -39,6 +41,95 @@
     "repository": "khonager/Majika",
     "packageId": "de.khonager.majika",
     "icon": "assets/icons/majika.png"
+  },
+  {
+    "id": "dreamcord",
+    "name": "Dreamcord",
+    "description": "Record and revisit your dreams when you wake.",
+    "repository": "khonager/dreamcord",
+    "packageId": "com.example.dreamcord",
+    "icon": null
+  },
+  {
+    "id": "gram",
+    "name": "Gram",
+    "description": "A 3D sentient weapon game.",
+    "repository": "khonager/gram",
+    "icon": null
+  },
+  {
+    "id": "riverfold",
+    "name": "Riverfold",
+    "description": "A card roguelike with hidden cards, a river, and aquatic companions.",
+    "repository": "khonager/Riverfold",
+    "packageId": "org.riverfold.game",
+    "icon": null
+  },
+  {
+    "id": "tipstroke",
+    "name": "TipStroke",
+    "description": "A local-first drawing app for Android and Linux.",
+    "repository": "khonager/TipStroke",
+    "packageId": "dev.tipstroke.app",
+    "icon": null
+  },
+  {
+    "id": "motomeru",
+    "name": "Motomeru",
+    "description": "A search-focused Android launcher.",
+    "repository": "khonager/Motomeru",
+    "packageId": "de.mm20.launcher2.release",
+    "icon": null
+  },
+  {
+    "id": "adwise",
+    "name": "AdWise",
+    "description": "Browse opt-in ads with visible personalization controls.",
+    "repository": "khonager/adwise",
+    "website": "https://getadwise.web.app",
+    "packageId": "com.khonager.adwise",
+    "icon": null
+  },
+  {
+    "id": "files",
+    "name": "Files",
+    "description": "A file portal for sharing and managing files.",
+    "repository": "khonager/files",
+    "website": "https://files.khonager.de",
+    "icon": null
+  },
+  {
+    "id": "wisec",
+    "name": "WiseC",
+    "description": "A branded file sharing portal.",
+    "repository": "khonager/files",
+    "website": "https://wisec-files.web.app",
+    "icon": null
+  },
+  {
+    "id": "safezone",
+    "name": "SafeZone",
+    "description": "A branded file sharing portal.",
+    "repository": "khonager/files",
+    "website": "https://safezone-files.web.app",
+    "icon": null
+  },
+  {
+    "id": "karma-tracker",
+    "name": "Karma Tracker",
+    "description": "Track your karma in a simple web app.",
+    "repository": "khonager/karma-tracker",
+    "website": "https://karma-tracker-web.web.app",
+    "icon": null
+  },
+  {
+    "id": "roid",
+    "name": "ROID",
+    "description": "A shared photo space for couples.",
+    "repository": "khonager/roid",
+    "website": "https://solaroid-lunaroid.web.app",
+    "packageId": "com.solaroid.roid",
+    "icon": null
   },
   {
     "id": "website",

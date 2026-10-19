@@ -49,11 +49,17 @@
     <queries>
         <!-- catalog packages:start -->
         <package android:name="chat.trace.client" />
+        <package android:name="com.example.dreamcord" />
+        <package android:name="com.khonager.adwise" />
+        <package android:name="com.solaroid.roid" />
         <package android:name="de.khonager.majika" />
         <package android:name="de.khonager.trans" />
         <package android:name="de.khonager.trans.unstable" />
         <package android:name="de.khonager.typesync" />
+        <package android:name="de.mm20.launcher2.release" />
         <package android:name="dev.khonager.core.dev" />
+        <package android:name="dev.tipstroke.app" />
+        <package android:name="org.riverfold.game" />
         <!-- catalog packages:end -->
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
         <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
