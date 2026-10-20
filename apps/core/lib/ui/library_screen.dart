@@ -121,6 +121,8 @@ class _LibraryScreenState extends State<LibraryScreen>
                           const SizedBox(height: 12),
                           if (widget.library.error != null)
                             Text(widget.library.error!),
+                          if (widget.library.refreshNotice != null)
+                            Text(widget.library.refreshNotice!),
                         ],
                       ),
                     ),

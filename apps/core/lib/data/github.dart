@@ -16,7 +16,24 @@ class GitHub {
   final http.Client client;
   String? _token;
   DateTime? _rateLimitedUntil;
+  int? _remaining;
+  DateTime? _windowResetsAt;
   bool get connected => _token != null;
+  int? get remaining => _remaining;
+  DateTime? get windowResetsAt => _windowResetsAt;
+  void restoreBudget(int? remaining, DateTime? resetsAt) {
+    if (resetsAt != null && DateTime.now().isBefore(resetsAt)) {
+      _remaining = remaining;
+      _windowResetsAt = resetsAt;
+    }
+  }
+
+  bool get lowBudget =>
+      !connected &&
+      _remaining != null &&
+      _remaining! <= 20 &&
+      (_windowResetsAt == null || DateTime.now().isBefore(_windowResetsAt!));
+  bool get budgetExhausted => lowBudget && _remaining! <= 5;
   bool get rateLimited =>
       _rateLimitedUntil != null && DateTime.now().isBefore(_rateLimitedUntil!);
   DateTime? get rateLimitedUntil => _rateLimitedUntil;
@@ -24,7 +41,10 @@ class GitHub {
   set token(String? value) {
     _token = value;
     _rateLimitedUntil = null;
+    _remaining = null;
+    _windowResetsAt = null;
     _cache.clear();
+    _previousSuccess.clear();
   }
 
   Map<String, String> get headers => {
@@ -46,12 +66,28 @@ class GitHub {
     }
   }
 
-  final Map<String, (String?, dynamic)> _cache = {};
-  Future<dynamic> get(String path, {Map<String, String>? query}) async {
-    if (rateLimited) throw GitHubException(rateLimitMessage, statusCode: 429);
+  final Map<String, (String?, dynamic, DateTime)> _cache = {};
+  final Map<int, BuildRun> _previousSuccess = {};
+  Future<dynamic> get(
+    String path, {
+    Map<String, String>? query,
+    Duration? maxAge,
+  }) async {
     final uri = Uri.https('api.github.com', path, query);
     final cacheKey = uri.toString();
     final cached = _cache[cacheKey];
+    if (cached != null &&
+        maxAge != null &&
+        DateTime.now().difference(cached.$3) < maxAge) {
+      return cached.$2;
+    }
+    if (rateLimited) throw GitHubException(rateLimitMessage, statusCode: 429);
+    if (budgetExhausted) {
+      throw GitHubException(
+        'GitHub requests are nearly exhausted. Try again later or connect GitHub.',
+        statusCode: 429,
+      );
+    }
     final response = await client
         .get(
           uri,
@@ -62,6 +98,16 @@ class GitHub {
         )
         .timeout(const Duration(seconds: 20));
     final remaining = response.headers['x-ratelimit-remaining'];
+    final parsedRemaining = int.tryParse(remaining ?? '');
+    final resetSeconds = int.tryParse(
+      response.headers['x-ratelimit-reset'] ?? '',
+    );
+    if (parsedRemaining != null) _remaining = parsedRemaining;
+    if (resetSeconds != null) {
+      _windowResetsAt = DateTime.fromMillisecondsSinceEpoch(
+        resetSeconds * 1000,
+      );
+    }
     final isRateLimit =
         response.statusCode == 429 ||
         (response.statusCode == 403 &&
@@ -69,16 +115,16 @@ class GitHub {
                 response.body.toLowerCase().contains('rate limit')));
     if (isRateLimit || remaining == '0') {
       final retrySeconds = int.tryParse(response.headers['retry-after'] ?? '');
-      final resetSeconds = int.tryParse(
-        response.headers['x-ratelimit-reset'] ?? '',
-      );
       _rateLimitedUntil = retrySeconds != null
           ? DateTime.now().add(Duration(seconds: retrySeconds))
           : remaining == '0' && resetSeconds != null
           ? DateTime.fromMillisecondsSinceEpoch(resetSeconds * 1000)
           : DateTime.now().add(const Duration(minutes: 1));
     }
-    if (response.statusCode == 304 && cached != null) return cached.$2;
+    if (response.statusCode == 304 && cached != null) {
+      _cache[cacheKey] = (cached.$1, cached.$2, DateTime.now());
+      return cached.$2;
+    }
     if (response.statusCode != 200) {
       throw GitHubException(switch (response.statusCode) {
         403 || 429 when isRateLimit => rateLimitMessage,
@@ -91,7 +137,7 @@ class GitHub {
       }, statusCode: response.statusCode);
     }
     final data = jsonDecode(response.body);
-    _cache[cacheKey] = (response.headers['etag'], data);
+    _cache[cacheKey] = (response.headers['etag'], data, DateTime.now());
     return data;
   }
 
@@ -107,6 +153,7 @@ class GitHub {
           await get(
                 '/repos/${p.repository}/releases',
                 query: {'per_page': '30', 'page': '$page'},
+                maxAge: const Duration(minutes: 2),
               )
               as List;
       releases.addAll(parseReleases(batch));
@@ -119,7 +166,10 @@ class GitHub {
       try {
         releases.add(
           Release(
-            await get('/repos/${p.repository}/releases/latest')
+            await get(
+                  '/repos/${p.repository}/releases/latest',
+                  maxAge: const Duration(minutes: 2),
+                )
                 as Map<String, dynamic>,
           ),
         );
@@ -132,21 +182,41 @@ class GitHub {
 
   Future<List<BuildRun>> runs(Project p) async {
     final data =
-        await get('/repos/${p.repository}/actions/runs')
+        await get(
+              '/repos/${p.repository}/actions/runs',
+              maxAge: const Duration(seconds: 30),
+            )
             as Map<String, dynamic>;
     // Preserve the latest run of EACH workflow, so an unrelated successful job
     // cannot hide a failing workflow. GitHub returns newest runs first.
+    final all = (data['workflow_runs'] as List).cast<Map<String, dynamic>>();
     final seen = <dynamic>{};
-    return (data['workflow_runs'] as List)
-        .cast<Map<String, dynamic>>()
+    final latest = all
         .where((r) => seen.add(r['workflow_id']))
         .map(BuildRun.new)
         .toList();
+    for (final run in latest) {
+      final previous = all.where(
+        (candidate) =>
+            candidate['workflow_id'] == run.workflowId &&
+            candidate['head_branch'] == run.branch &&
+            candidate['conclusion'] == 'success' &&
+            candidate['id'] != run.id,
+      );
+      if (previous.isNotEmpty) {
+        _previousSuccess[run.id] = BuildRun(previous.first);
+      }
+    }
+    return latest;
   }
 
   Future<List<ProjectCommit>> commits(Project p) async {
     final data =
-        await get('/repos/${p.repository}/commits', query: {'per_page': '5'})
+        await get(
+              '/repos/${p.repository}/commits',
+              query: {'per_page': '5'},
+              maxAge: const Duration(minutes: 30),
+            )
             as List;
     return data
         .cast<Map<String, dynamic>>()
@@ -162,6 +232,9 @@ class GitHub {
           await get(
                 '/repos/${p.repository}/actions/runs/${run.id}/jobs',
                 query: {'per_page': '100', 'page': '$page'},
+                maxAge: run.status == BuildStatus.running
+                    ? const Duration(seconds: 30)
+                    : const Duration(minutes: 30),
               )
               as Map<String, dynamic>;
       final batch = (data['jobs'] as List).cast<Map<String, dynamic>>();
@@ -173,6 +246,7 @@ class GitHub {
   }
 
   Future<BuildRun?> previousSuccessfulRun(Project p, BuildRun run) async {
+    if (_previousSuccess[run.id] case final previous?) return previous;
     final data =
         await get(
               '/repos/${p.repository}/actions/workflows/${run.workflowId}/runs',

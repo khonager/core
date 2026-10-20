@@ -25,6 +25,8 @@ class DetailsScreen extends StatefulWidget {
 
 class _DetailsScreenState extends State<DetailsScreen> {
   bool dev = false, busy = false, copying = false;
+  bool initialMetadataReady = false;
+  int pollTicks = 0;
   Timer? buildPoll;
   Project get p => widget.project;
   Library get lib => widget.library;
@@ -33,8 +35,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
   void initState() {
     super.initState();
     lib.addListener(loadVisibleBuilds);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      await lib.refreshProject(p, automatic: true);
+      if (!mounted) return;
+      initialMetadataReady = true;
       lib.refreshCommits(p);
       loadVisibleBuilds();
     });
@@ -43,13 +48,16 @@ class _DetailsScreenState extends State<DetailsScreen> {
           lib.states[p.id]?.runs.any(
                 (run) => run.status == BuildStatus.running,
               ) ==
-              true) {
+              true &&
+          !lib.github.lowBudget &&
+          (lib.github.connected || ++pollTicks % 5 == 0)) {
         lib.refreshBuilds(p);
       }
     });
   }
 
   void loadVisibleBuilds() {
+    if (!initialMetadataReady) return;
     final state = lib.states[p.id];
     if (state == null) return;
     for (final run in state.runs) {

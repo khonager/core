@@ -82,6 +82,26 @@ void main() {
       expect(state.status, BuildStatus.failure);
     },
   );
+  test(
+    'run feed supplies the prior success without another API request',
+    () async {
+      var requests = 0;
+      final github = GitHub(
+        client: MockClient((_) async {
+          requests++;
+          return http.Response(
+            jsonEncode({
+              'workflow_runs': [run(8, 1, 'failure'), run(7, 1, 'success')],
+            }),
+            200,
+          );
+        }),
+      );
+      final current = (await github.runs(project)).single;
+      expect((await github.previousSuccessfulRun(project, current))?.id, 7);
+      expect(requests, 1);
+    },
+  );
   test('rate limit has actionable error', () async {
     var requests = 0;
     final github = GitHub(
@@ -124,6 +144,38 @@ void main() {
     );
     expect(github.rateLimited, isFalse);
   });
+  test('anonymous requests reserve the last five API calls', () async {
+    var requests = 0;
+    final reset = DateTime.now().add(const Duration(hours: 1));
+    final github = GitHub(
+      client: MockClient((_) async {
+        requests++;
+        return http.Response(
+          '[]',
+          200,
+          headers: {
+            'x-ratelimit-remaining': '5',
+            'x-ratelimit-reset': '${reset.millisecondsSinceEpoch ~/ 1000}',
+          },
+        );
+      }),
+    );
+    await github.commits(project);
+    expect(github.lowBudget, isTrue);
+    expect(github.budgetExhausted, isTrue);
+    expect(await github.commits(project), isEmpty);
+    await expectLater(
+      github.get('/repos/owner/another/commits'),
+      throwsA(
+        isA<GitHubException>().having(
+          (e) => e.message,
+          'message',
+          contains('nearly exhausted'),
+        ),
+      ),
+    );
+    expect(requests, 1);
+  });
   test('ETag revalidation keeps prior result on 304', () async {
     var requests = 0;
     final github = GitHub(
@@ -135,8 +187,8 @@ void main() {
         return http.Response('', 304);
       }),
     );
-    await github.releases(project);
-    expect(await github.releases(project), isEmpty);
+    await github.get('/repos/owner/sample/releases');
+    expect(await github.get('/repos/owner/sample/releases'), isEmpty);
   });
   test('copy full logs includes every job and context', () async {
     final github = GitHub(

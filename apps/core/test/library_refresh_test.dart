@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:core_app/data/github.dart';
 import 'package:core_app/data/github_auth.dart';
 import 'package:core_app/data/library.dart';
+import 'package:core_app/domain/project.dart';
 import 'package:core_app/platform/device.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +38,8 @@ void main() {
         device: TestDevice(),
       );
       await first.init();
+      expect(requests, 0);
+      await first.refreshProject(first.projects.first, automatic: true);
       expect(requests, greaterThan(0));
       first.dispose();
 
@@ -49,7 +52,7 @@ void main() {
       addTearDown(second.dispose);
       await second.init();
       expect(requests, 0);
-      await second.refresh();
+      await second.refreshProject(second.projects.first, automatic: true);
       expect(requests, 0);
     },
   );
@@ -74,6 +77,7 @@ void main() {
     );
     addTearDown(library.dispose);
     await library.init();
+    await library.refresh();
     expect(requests, 1);
     for (final project in library.projects) {
       expect(library.states[project.id]!.buildError, contains('rate limit'));
@@ -121,6 +125,7 @@ void main() {
     );
     addTearDown(library.dispose);
     await library.init();
+    await library.refreshProject(library.projects.first, automatic: true);
     expect(library.github.rateLimited, isTrue);
     await library.connectCredentials(
       const GitHubCredentials(token: 'ghu_test'),
@@ -128,6 +133,110 @@ void main() {
     expect(library.github.rateLimited, isFalse);
     expect(authenticatedRequests, greaterThan(0));
     expect(library.states[library.projects.first.id]!.buildError, isNull);
+  });
+
+  test(
+    'full library refresh stops when the anonymous budget runs low',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var requests = 0;
+      final reset = DateTime.now().add(const Duration(hours: 1));
+      final preferences = await SharedPreferences.getInstance();
+      final library = Library(
+        preferences: preferences,
+        github: GitHub(
+          client: MockClient((request) async {
+            requests++;
+            final remaining = 21 - requests;
+            final headers = {
+              'x-ratelimit-remaining': '$remaining',
+              'x-ratelimit-reset': '${reset.millisecondsSinceEpoch ~/ 1000}',
+            };
+            return request.url.path.endsWith('/actions/runs')
+                ? http.Response(
+                    jsonEncode({'workflow_runs': []}),
+                    200,
+                    headers: headers,
+                  )
+                : http.Response('[]', 200, headers: headers);
+          }),
+        ),
+        device: TestDevice(),
+      );
+      addTearDown(library.dispose);
+      await library.init();
+      expect(requests, 0);
+      await library.refresh();
+      expect(requests, 2);
+      expect(library.refreshNotice, contains('running low'));
+      final reopened = Library(
+        preferences: preferences,
+        github: GitHub(
+          client: MockClient((_) async {
+            requests++;
+            throw StateError('The saved budget should stop a full refresh.');
+          }),
+        ),
+        device: TestDevice(),
+      );
+      addTearDown(reopened.dispose);
+      await reopened.init();
+      await reopened.refresh();
+      expect(requests, 2);
+    },
+  );
+
+  test('build refresh reuses recent jobs and previous-run history', () async {
+    SharedPreferences.setMockInitialValues({});
+    var currentJobs = 0, previousJobs = 0, history = 0;
+    final library = Library(
+      preferences: await SharedPreferences.getInstance(),
+      github: GitHub(
+        client: MockClient((request) async {
+          final path = request.url.path;
+          if (path.endsWith('/actions/runs/8/jobs')) {
+            currentJobs++;
+            return http.Response(jsonEncode({'jobs': []}), 200);
+          }
+          if (path.endsWith('/actions/runs/7/jobs')) {
+            previousJobs++;
+            return http.Response(jsonEncode({'jobs': []}), 200);
+          }
+          if (path.contains('/actions/workflows/')) {
+            history++;
+            return http.Response(
+              jsonEncode({
+                'workflow_runs': [
+                  {
+                    'id': 7,
+                    'workflow_id': 1,
+                    'status': 'completed',
+                    'conclusion': 'success',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          throw StateError('Unexpected request: $path');
+        }),
+      ),
+      device: TestDevice(),
+    );
+    addTearDown(library.dispose);
+    await library.init();
+    final project = library.projects.first;
+    final run = BuildRun({
+      'id': 8,
+      'workflow_id': 1,
+      'status': 'in_progress',
+      'head_branch': 'main',
+    });
+    await library.loadBuildDetails(project, run);
+    await library.loadBuildDetails(project, run, force: true);
+    expect(currentJobs, 1);
+    expect(previousJobs, 1);
+    expect(history, 1);
   });
 
   test('recent commits load per repository and are cached', () async {

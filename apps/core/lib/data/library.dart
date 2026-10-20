@@ -27,6 +27,7 @@ class Library extends ChangeNotifier {
   List<ProjectCommit> commits = [];
   final commitsErrors = <String, String>{};
   final commitsLoading = <String>{};
+  String? refreshNotice;
   String? error, deviceError;
   bool refreshing = false, _disposed = false, _polling = false;
   Timer? _timer;
@@ -95,6 +96,13 @@ class Library extends ChangeNotifier {
       if (retryAt != null) {
         github.restoreRateLimit(DateTime.fromMillisecondsSinceEpoch(retryAt));
       }
+      final budgetReset = preferences.getInt('github.budgetReset');
+      github.restoreBudget(
+        preferences.getInt('github.budgetRemaining'),
+        budgetReset == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(budgetReset),
+      );
       changed();
       await pollDevice();
       _timer = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -104,7 +112,8 @@ class Library extends ChangeNotifier {
           pollDevice();
         }
       });
-      await _refresh(automatic: true);
+      // Metadata is loaded when a project is opened. Refreshing every
+      // repository on launch consumes most of GitHub's anonymous allowance.
     } catch (_) {
       error = 'The catalog could not be loaded. Restart Core to retry.';
       changed();
@@ -116,6 +125,7 @@ class Library extends ChangeNotifier {
   Future<void> _refresh({required bool automatic}) async {
     if (refreshing) return;
     refreshing = true;
+    refreshNotice = null;
     changed();
     for (final project in projects) {
       if (github.rateLimited) {
@@ -123,6 +133,11 @@ class Library extends ChangeNotifier {
         state.releaseError = github.rateLimitMessage;
         state.buildError = github.rateLimitMessage;
         continue;
+      }
+      if (github.lowBudget) {
+        refreshNotice =
+            'GitHub requests are running low. Open an app to update its details.';
+        break;
       }
       await refreshProject(project, automatic: automatic);
     }
@@ -176,10 +191,29 @@ class Library extends ChangeNotifier {
       commitsErrors[p.repository] = _message(e);
     }
     commitsLoading.remove(p.repository);
+    await _saveBudget();
     changed();
   }
 
+  Future<void> _saveBudget() async {
+    if (github.connected ||
+        github.remaining == null ||
+        github.windowResetsAt == null) {
+      return;
+    }
+    try {
+      await preferences.setInt('github.budgetRemaining', github.remaining!);
+      await preferences.setInt(
+        'github.budgetReset',
+        github.windowResetsAt!.millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      // Saved quota is advisory; current network data remains usable.
+    }
+  }
+
   final _historicalJobs = <int, List<BuildJob>>{};
+  final _historicalBuilds = <String, (BuildRun?, List<BuildJob>)>{};
 
   Future<void> loadBuildDetails(
     Project p,
@@ -205,12 +239,20 @@ class Library extends ChangeNotifier {
       List<BuildJob> previousJobs = [];
       BuildRun? previousRun;
       try {
-        previousRun = await github.previousSuccessfulRun(p, run);
-        if (previousRun != null) {
-          previousJobs =
-              _historicalJobs[previousRun.id] ??
-              await github.jobs(p, previousRun);
-          _historicalJobs[previousRun.id] = previousJobs;
+        final key = '${p.repository}:${run.id}';
+        final cached = _historicalBuilds[key];
+        if (cached != null) {
+          previousRun = cached.$1;
+          previousJobs = cached.$2;
+        } else {
+          previousRun = await github.previousSuccessfulRun(p, run);
+          if (previousRun != null) {
+            previousJobs =
+                _historicalJobs[previousRun.id] ??
+                await github.jobs(p, previousRun);
+            _historicalJobs[previousRun.id] = previousJobs;
+          }
+          _historicalBuilds[key] = (previousRun, previousJobs);
         }
       } catch (_) {
         // Current step information remains useful without an estimate.
@@ -225,6 +267,7 @@ class Library extends ChangeNotifier {
       state.buildDetailsErrors[run.id] = _message(e);
     } finally {
       state.buildDetailsLoading.remove(run.id);
+      await _saveBudget();
       changed();
     }
   }
@@ -243,6 +286,8 @@ class Library extends ChangeNotifier {
     } catch (e) {
       state.buildError = _message(e);
       changed();
+    } finally {
+      await _saveBudget();
     }
   }
 
@@ -354,6 +399,7 @@ class Library extends ChangeNotifier {
       /* A notification or cache failure must not hide live data. */
     }
     s.loading = false;
+    await _saveBudget();
     changed();
   }
 
@@ -411,6 +457,8 @@ class Library extends ChangeNotifier {
 
   Future<void> _clearAccountCache() async {
     await preferences.remove('github.rateLimitUntil');
+    await preferences.remove('github.budgetRemaining');
+    await preferences.remove('github.budgetReset');
     await preferences.remove('commits.cache.v1');
     for (final repository in projects.map((p) => p.repository).toSet()) {
       await preferences.remove('commits.refresh.v1.$repository');
@@ -418,6 +466,7 @@ class Library extends ChangeNotifier {
     commits = [];
     commitsErrors.clear();
     _historicalJobs.clear();
+    _historicalBuilds.clear();
     // Clear account-dependent cached data when changing access.
     for (final project in projects) {
       await preferences.remove('cache.v1.${project.id}');

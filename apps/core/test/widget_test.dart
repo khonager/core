@@ -115,10 +115,40 @@ Future<Library> library({bool offline = false}) async {
     ),
   );
   await lib.init();
+  await lib.refresh();
   return lib;
 }
 
 void main() {
+  testWidgets('opening one app fetches only that repository', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final paths = <String>[];
+    final lib = Library(
+      preferences: await SharedPreferences.getInstance(),
+      device: TestDevice(),
+      github: GitHub(
+        client: MockClient((request) async {
+          paths.add(request.url.path);
+          return request.url.path.endsWith('/actions/runs')
+              ? http.Response(jsonEncode({'workflow_runs': []}), 200)
+              : http.Response('[]', 200);
+        }),
+      ),
+    );
+    addTearDown(lib.dispose);
+    await tester.runAsync(lib.init);
+    expect(paths, isEmpty);
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    expect(paths, hasLength(3));
+    expect(
+      paths.every((path) => path.startsWith('/repos/khonager/core/')),
+      isTrue,
+    );
+  });
+
   testWidgets('desktop details show commits without scrolling the app list', (
     tester,
   ) async {

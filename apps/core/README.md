@@ -106,8 +106,9 @@ signing identity have not been configured yet.
   Downloads survive app restarts. APK package IDs are checked against the
   catalog before handing off to Android's signature/compatibility checks.
 - Per-project notification switches, persisted on-device. Alerts are emitted
-  for new changes detected on opening/refreshing Core, after an initial baseline.
-  **No scheduled background polling or server push yet.**
+  for new changes detected when opening a project or refreshing the library,
+  after an initial baseline. **No background notification polling or server push
+  yet.**
 - Cached releases and runs; refresh failures preserve saved data and report the
   error in details. Pull to refresh or use the refresh button.
 - On Android, website links use Custom Tabs; other platforms use a browser.
@@ -145,15 +146,19 @@ memory until reload. Disconnect from Manage GitHub access to delete the token an
 clear account-dependent cached metadata. Tokens are never forwarded to signed
 log-download storage URLs. Android backup is disabled.
 
-Core reuses saved release and build data for 30 minutes on launch and allows an
-explicit refresh every two minutes. It remembers GitHub's rate-limit reset time
-across app restarts and pauses requests until then. This reduces anonymous API
-traffic but does not guarantee availability on networks where many users share
-one IP address. Authenticated GitHub access has a larger per-user allowance.
-While a project page is open, active build steps update every two minutes; the
-build refresh button checks immediately. Progress is based on completed GitHub
-Actions steps, and time estimates use the previous successful run of the same
-workflow. Estimates are unavailable until that history exists.
+Core shows saved release and build data at launch and fetches fresh metadata
+when a project page opens. A full library refresh is still available, but stops
+early when the anonymous GitHub allowance runs low. Core reserves the final five
+anonymous API requests and remembers GitHub's reset time across restarts. The
+allowance is shared by devices on the same public IP address. Authenticated
+GitHub access has a larger per-user allowance.
+
+While a project page is open, active build steps update every ten minutes
+without GitHub access or every two minutes when connected. The build refresh
+button checks immediately. Core reuses the previous successful run during
+polling. Progress is based on completed GitHub Actions steps, and time estimates
+use that previous run of the same workflow. Estimates are unavailable until
+that history exists.
 
 ### Optional GitHub sign-in
 
