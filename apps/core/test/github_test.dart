@@ -301,6 +301,7 @@ void main() {
             200,
           );
         }
+        expect(request.url.queryParameters['branch'], 'main');
         return http.Response(
           jsonEncode({
             'workflow_runs': [run(3, 1, 'success'), run(2, 1, 'success')],

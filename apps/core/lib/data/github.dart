@@ -176,7 +176,11 @@ class GitHub {
     final data =
         await get(
               '/repos/${p.repository}/actions/workflows/${run.workflowId}/runs',
-              query: {'status': 'success', 'per_page': '10'},
+              query: {
+                'status': 'success',
+                'per_page': '10',
+                if (run.branch.isNotEmpty) 'branch': run.branch,
+              },
             )
             as Map<String, dynamic>;
     for (final json

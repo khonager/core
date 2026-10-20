@@ -113,7 +113,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
           borderRadius: BorderRadius.circular(4),
           color: CoreColors.status(run.status),
           backgroundColor: CoreColors.background,
-          value: details == null
+          value:
+              details == null ||
+                  (details.steps.isEmpty && run.status == BuildStatus.running)
               ? run.status == BuildStatus.success
                     ? 1
                     : run.status == BuildStatus.running
