@@ -144,6 +144,16 @@ class GitHub {
         .toList();
   }
 
+  Future<List<ProjectCommit>> commits(Project p) async {
+    final data =
+        await get('/repos/${p.repository}/commits', query: {'per_page': '5'})
+            as List;
+    return data
+        .cast<Map<String, dynamic>>()
+        .map((json) => ProjectCommit(project: p, json: json))
+        .toList();
+  }
+
   Future<String> logs(Project p, BuildRun run) async {
     final output = StringBuffer(
       '${p.repository} • ${run.title}\n${run.branch} • ${run.sha}\n${run.url}\n\n',

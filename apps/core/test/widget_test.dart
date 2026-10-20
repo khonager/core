@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:core_app/data/github.dart';
 import 'package:core_app/data/library.dart';
+import 'package:core_app/domain/project.dart';
 import 'package:core_app/main.dart';
 import 'package:core_app/platform/device.dart';
 import 'package:flutter/material.dart';
@@ -69,6 +70,40 @@ Future<Library> library({bool offline = false}) async {
 }
 
 void main() {
+  testWidgets('recent commits appear after the catalog and open on GitHub', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    lib.commits = [
+      ProjectCommit(
+        project: lib.projects.first,
+        json: {
+          'sha': 'abcdef123456789',
+          'html_url': 'https://github.com/khonager/core/commit/abcdef123456789',
+          'commit': {
+            'message': 'Add a new feature\nMore details',
+            'committer': {'date': '2026-10-20T12:00:00Z'},
+          },
+        },
+      ),
+    ];
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -3000),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Recent commits'), findsOneWidget);
+    expect(find.text('Add a new feature'), findsOneWidget);
+    await tester.tap(find.text('Add a new feature'));
+    await tester.pumpAndSettle();
+    expect((lib.device as TestDevice).openedUrls, [
+      'https://github.com/khonager/core/commit/abcdef123456789',
+    ]);
+  });
+
   testWidgets('installed app icon opens the app while row opens details', (
     tester,
   ) async {

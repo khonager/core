@@ -84,6 +84,9 @@ signing identity have not been configured yet.
 ## First version
 
 - Searchable curated Library and Project details; releases are inside details.
+- A scrollable recent-commits feed below the catalog, combining the latest
+  commits from its repositories. Entries open on GitHub; shared repositories
+  are fetched once. The feed is cached and refreshed with the library.
 - Warm eggshell surface, large rounded icons, subdued descriptions.
 - GitHub stable/prerelease data and Markdown changelogs. Stable releases are
   recovered through the latest endpoint when absent from the recent release feed;

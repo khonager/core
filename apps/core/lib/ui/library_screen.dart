@@ -48,6 +48,17 @@ class _LibraryScreenState extends State<LibraryScreen>
     }
   }
 
+  Future<void> openCommit(ProjectCommit commit) async {
+    try {
+      await widget.library.device.open(commit.url);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open this commit on GitHub.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.library,
@@ -139,7 +150,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     )
                   else
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
                       sliver: SliverList.builder(
                         itemCount: items.length,
                         itemBuilder: (context, index) {
@@ -175,6 +186,74 @@ class _LibraryScreenState extends State<LibraryScreen>
                         },
                       ),
                     ),
+                  if (widget.library.projects.isNotEmpty &&
+                      items.isNotEmpty) ...[
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                      sliver: SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Recent commits',
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Latest changes across your projects',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            if (widget.library.commitsError
+                                case final error?) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                error,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (widget.library.commits.isEmpty)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
+                        sliver: SliverToBoxAdapter(
+                          child: widget.library.commitsLoading
+                              ? const Center(child: CircularProgressIndicator())
+                              : const Text('No recent commits available.'),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                        sliver: SliverList.builder(
+                          itemCount: widget.library.commits.length,
+                          itemBuilder: (context, index) {
+                            final commit = widget.library.commits[index];
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                              ),
+                              leading: ProjectIcon(commit.project, size: 44),
+                              title: Text(
+                                commit.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                '${commit.project.name} · ${MaterialLocalizations.of(context).formatMediumDate(commit.date.toLocal())} · ${commit.sha}',
+                              ),
+                              trailing: const Icon(
+                                Icons.open_in_new_rounded,
+                                size: 18,
+                              ),
+                              onTap: () => openCommit(commit),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),

@@ -30,6 +30,28 @@ class Project {
   }
 }
 
+class ProjectCommit {
+  ProjectCommit({required this.project, required this.json});
+  final Project project;
+  final Map<String, dynamic> json;
+
+  String get title =>
+      ((json['commit'] as Map<String, dynamic>)['message'] as String? ?? '')
+          .split('\n')
+          .first;
+  String get url => json['html_url'] as String;
+  String get sha => (json['sha'] as String).substring(0, 7);
+  DateTime get date {
+    final commit = json['commit'] as Map<String, dynamic>;
+    final committer = commit['committer'] as Map<String, dynamic>?;
+    final author = commit['author'] as Map<String, dynamic>?;
+    return DateTime.tryParse(
+          (committer?['date'] ?? author?['date']) as String? ?? '',
+        ) ??
+        DateTime(1970);
+  }
+}
+
 enum BuildStatus { unknown, running, success, failure, cancelled }
 
 class BuildRun {

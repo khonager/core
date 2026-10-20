@@ -24,6 +24,9 @@ class Library extends ChangeNotifier {
   final states = <String, ProjectState>{};
   final downloads = <String, Map<String, dynamic>>{};
   final installed = <String, String>{};
+  List<ProjectCommit> commits = [];
+  String? commitsError;
+  bool commitsLoading = false;
   String? error, deviceError;
   bool refreshing = false, _disposed = false, _polling = false;
   Timer? _timer;
@@ -55,6 +58,24 @@ class Library extends ChangeNotifier {
         } catch (_) {
           /* An invalid cache must never prevent the catalog opening. */
         }
+      }
+      try {
+        final saved =
+            jsonDecode(preferences.getString('commits.cache.v1') ?? '{}')
+                as Map<String, dynamic>;
+        final byId = {for (final p in projects) p.id: p};
+        commits = (saved['entries'] as List? ?? [])
+            .cast<Map<String, dynamic>>()
+            .where((entry) => byId.containsKey(entry['projectId']))
+            .map(
+              (entry) => ProjectCommit(
+                project: byId[entry['projectId']]!,
+                json: entry['commit'] as Map<String, dynamic>,
+              ),
+            )
+            .toList();
+      } catch (_) {
+        // A damaged feed cache should not stop the catalog opening.
       }
       try {
         final saved = await device.readGitHubAuth();
@@ -105,7 +126,70 @@ class Library extends ChangeNotifier {
       }
       await refreshProject(project, automatic: automatic);
     }
+    await refreshCommits(automatic: automatic);
     refreshing = false;
+    changed();
+  }
+
+  Future<void> refreshCommits({bool automatic = false}) async {
+    if (commitsLoading) return;
+    if (github.rateLimited) {
+      commitsError = github.rateLimitMessage;
+      changed();
+      return;
+    }
+    final previous = preferences.getInt('commits.refresh.v1');
+    final interval = automatic
+        ? const Duration(minutes: 30)
+        : const Duration(minutes: 2);
+    if (previous != null &&
+        DateTime.now().difference(
+              DateTime.fromMillisecondsSinceEpoch(previous),
+            ) <
+            interval) {
+      return;
+    }
+    await preferences.setInt(
+      'commits.refresh.v1',
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    commitsLoading = true;
+    changed();
+    final fetched = <ProjectCommit>[];
+    var failures = 0;
+    final seen = <String>{};
+    for (final project in projects) {
+      if (!seen.add(project.repository)) continue;
+      if (github.rateLimited) break;
+      try {
+        fetched.addAll(await github.commits(project));
+      } catch (_) {
+        failures++;
+      }
+    }
+    if (fetched.isNotEmpty || failures == 0) {
+      fetched.sort((a, b) => b.date.compareTo(a.date));
+      commits = fetched.take(30).toList();
+      try {
+        await preferences.setString(
+          'commits.cache.v1',
+          jsonEncode({
+            'entries': [
+              for (final entry in commits)
+                {'projectId': entry.project.id, 'commit': entry.json},
+            ],
+          }),
+        );
+      } catch (_) {
+        // Live commits remain visible if local storage fails.
+      }
+    }
+    commitsError = github.rateLimited
+        ? github.rateLimitMessage
+        : failures > 0
+        ? 'Some repositories could not be checked. Pull down to retry.'
+        : null;
+    commitsLoading = false;
     changed();
   }
 
@@ -274,6 +358,10 @@ class Library extends ChangeNotifier {
 
   Future<void> _clearAccountCache() async {
     await preferences.remove('github.rateLimitUntil');
+    await preferences.remove('commits.cache.v1');
+    await preferences.remove('commits.refresh.v1');
+    commits = [];
+    commitsError = null;
     // Clear account-dependent cached data when changing access.
     for (final project in projects) {
       await preferences.remove('cache.v1.${project.id}');
