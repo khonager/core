@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -24,8 +25,183 @@ class DetailsScreen extends StatefulWidget {
 
 class _DetailsScreenState extends State<DetailsScreen> {
   bool dev = false, busy = false, copying = false;
+  Timer? buildPoll;
   Project get p => widget.project;
   Library get lib => widget.library;
+
+  @override
+  void initState() {
+    super.initState();
+    lib.addListener(loadVisibleBuilds);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      lib.refreshCommits(p);
+      loadVisibleBuilds();
+    });
+    buildPoll = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (mounted &&
+          lib.states[p.id]?.runs.any(
+                (run) => run.status == BuildStatus.running,
+              ) ==
+              true) {
+        lib.refreshBuilds(p);
+      }
+    });
+  }
+
+  void loadVisibleBuilds() {
+    final state = lib.states[p.id];
+    if (state == null) return;
+    for (final run in state.runs) {
+      if (!state.buildDetails.containsKey(run.id) &&
+          !state.buildDetailsLoading.contains(run.id) &&
+          !state.buildDetailsErrors.containsKey(run.id)) {
+        lib.loadBuildDetails(p, run);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    buildPoll?.cancel();
+    lib.removeListener(loadVisibleBuilds);
+    super.dispose();
+  }
+
+  Future<void> refreshDetails() async {
+    await lib.refreshProject(p);
+    await lib.refreshCommits(p, automatic: false);
+    await lib.refreshBuilds(p);
+  }
+
+  String estimate(Duration duration) {
+    final minutes = (duration.inSeconds / 60).ceil();
+    if (minutes <= 0) return 'under 1 min';
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours h' : '$hours h $rest min';
+  }
+
+  Duration remaining(Duration expected, Duration elapsed) {
+    if (elapsed.isNegative) return expected;
+    final left = expected - elapsed;
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  Widget buildProgress(BuildRun run, ProjectState state) {
+    final details = state.buildDetails[run.id];
+    final failed = details?.failedStep;
+    final failedJob = details?.failedJob;
+    final active = details?.activeStep;
+    final steps = details?.steps ?? [];
+    final done = steps.where((pair) => pair.$2.done).length;
+    final now = DateTime.now();
+    final priorTotal = details?.previousTotalDuration;
+    final started = run.startedAt;
+    final elapsed = started == null ? null : now.difference(started);
+    final priorStep = active == null
+        ? null
+        : details?.previousStepDuration(active.$1, active.$2);
+    final stepStarted = active?.$2.startedAt;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        LinearProgressIndicator(
+          minHeight: 6,
+          borderRadius: BorderRadius.circular(4),
+          color: CoreColors.status(run.status),
+          backgroundColor: CoreColors.background,
+          value: details == null
+              ? run.status == BuildStatus.success
+                    ? 1
+                    : run.status == BuildStatus.running
+                    ? null
+                    : 0
+              : details.progress(now),
+        ),
+        const SizedBox(height: 8),
+        if (failed != null)
+          Text(
+            'Failed at ${failed.$1.name} · ${failed.$2.name}',
+            style: TextStyle(color: CoreColors.red),
+          )
+        else if (failedJob != null)
+          Text(
+            'Failed in ${failedJob.name}',
+            style: TextStyle(color: CoreColors.red),
+          )
+        else if (active != null)
+          Text('Now: ${active.$1.name} · ${active.$2.name}')
+        else if (run.status == BuildStatus.running)
+          const Text('Waiting for the next GitHub Actions step')
+        else if (run.status == BuildStatus.success)
+          const Text('All steps completed'),
+        if (steps.isNotEmpty)
+          Text(
+            '$done of ${steps.length} steps completed · ${(details!.progress(now) * 100).round()}%',
+          ),
+        if (active != null && priorStep != null && stepStarted != null)
+          Text(
+            now.difference(stepStarted) > priorStep
+                ? 'Current step: running longer than the previous ~${estimate(priorStep)}'
+                : 'Current step: ~${estimate(priorStep)} total · ~${estimate(remaining(priorStep, now.difference(stepStarted)))} left',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        if (priorTotal != null)
+          Text(
+            run.status == BuildStatus.running && elapsed != null
+                ? elapsed > priorTotal
+                      ? 'Build: running longer than the previous ~${estimate(priorTotal)}'
+                      : 'Build: ~${estimate(priorTotal)} total · ~${estimate(remaining(priorTotal, elapsed))} left'
+                : 'Previous successful build: ${estimate(priorTotal)}',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else if (details != null)
+          Text(
+            'Time estimates appear after a successful build.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        if (state.buildDetailsErrors[run.id] case final error?)
+          Text(error, style: Theme.of(context).textTheme.bodySmall),
+        if (state.buildDetailsLoading.contains(run.id))
+          Text(
+            'Loading build steps…',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        if (steps.isNotEmpty)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('View build steps'),
+            children: [
+              for (final (job, step) in steps)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    step.failed
+                        ? Icons.error_outline
+                        : step.done
+                        ? Icons.check_circle_outline
+                        : step.status == 'in_progress'
+                        ? Icons.sync_rounded
+                        : Icons.schedule,
+                    size: 18,
+                    color: step.failed ? CoreColors.red : CoreColors.muted,
+                  ),
+                  title: Text(step.name),
+                  subtitle: Text(job.name),
+                  trailing: step.duration == null
+                      ? null
+                      : Text(estimate(step.duration!)),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
   void message(String text) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -333,7 +509,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
           ],
         ),
         body: RefreshIndicator(
-          onRefresh: () => lib.refreshProject(p),
+          onRefresh: refreshDetails,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
@@ -545,7 +721,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   ),
                   IconButton(
                     tooltip: 'Refresh build activity',
-                    onPressed: s.loading ? null : () => lib.refreshProject(p),
+                    onPressed: s.loading ? null : () => lib.refreshBuilds(p),
                     icon: const Icon(Icons.refresh_rounded),
                   ),
                 ],
@@ -616,6 +792,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             Text('${run.branch} · ${run.sha}'),
+                            buildProgress(run, s),
                             const SizedBox(height: 8),
                             TextButton.icon(
                               onPressed: copying ? null : () => logs(run),
@@ -653,6 +830,37 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     'Last synced ${s.checked!.toLocal().toString().substring(0, 16)}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                ),
+              const SizedBox(height: 28),
+              const Divider(),
+              const SizedBox(height: 20),
+              Text(
+                'Recent commits',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              if (lib.commitsErrors[p.repository] case final error?)
+                Text(error, style: Theme.of(context).textTheme.bodySmall),
+              if (lib.commitsLoading.contains(p.repository))
+                const LinearProgressIndicator(),
+              if (!lib.commitsLoading.contains(p.repository) &&
+                  lib.commits
+                      .where(
+                        (entry) => entry.project.repository == p.repository,
+                      )
+                      .isEmpty)
+                const Text('No recent commits available.'),
+              for (final commit in lib.commits.where(
+                (entry) => entry.project.repository == p.repository,
+              ))
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(commit.title),
+                  subtitle: Text(
+                    '${MaterialLocalizations.of(context).formatMediumDate(commit.date.toLocal())} · ${commit.sha}',
+                  ),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () => open(commit.url),
                 ),
             ],
           ),

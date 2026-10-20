@@ -192,6 +192,132 @@ void main() {
     expect(BuildRun(run(1, 1, '', status: 'queued')).label, 'Build queued');
   });
   test(
+    'build progress uses matching step and total durations from prior jobs',
+    () {
+      Map<String, dynamic> step(
+        int number,
+        String name,
+        String status,
+        String start,
+        String? end,
+        String? conclusion,
+      ) => {
+        'number': number,
+        'name': name,
+        'status': status,
+        'started_at': start,
+        'completed_at': end,
+        'conclusion': conclusion,
+      };
+      final previous = BuildJob({
+        'name': 'Android',
+        'started_at': '2026-10-19T10:00:00Z',
+        'completed_at': '2026-10-19T10:10:00Z',
+        'steps': [
+          step(
+            1,
+            'Setup',
+            'completed',
+            '2026-10-19T10:00:00Z',
+            '2026-10-19T10:02:00Z',
+            'success',
+          ),
+          step(
+            2,
+            'Compile',
+            'completed',
+            '2026-10-19T10:02:00Z',
+            '2026-10-19T10:10:00Z',
+            'success',
+          ),
+        ],
+      });
+      final current = BuildJob({
+        'name': 'Android',
+        'steps': [
+          step(
+            1,
+            'Setup',
+            'completed',
+            '2026-10-20T10:00:00Z',
+            '2026-10-20T10:02:00Z',
+            'success',
+          ),
+          step(2, 'Compile', 'in_progress', '2026-10-20T10:02:00Z', null, null),
+        ],
+      });
+      final details = BuildDetails(jobs: [current], previousJobs: [previous]);
+      expect(details.activeStep?.$2.name, 'Compile');
+      expect(
+        details.previousStepDuration(current, current.steps.last),
+        const Duration(minutes: 8),
+      );
+      expect(details.previousTotalDuration, const Duration(minutes: 10));
+      final withRunTiming = BuildDetails(
+        jobs: [current],
+        previousJobs: [previous],
+        previousRun: BuildRun({
+          ...run(2, 1, 'success'),
+          'run_started_at': '2026-10-19T09:59:00Z',
+          'updated_at': '2026-10-19T10:11:00Z',
+        }),
+      );
+      expect(withRunTiming.previousTotalDuration, const Duration(minutes: 12));
+      expect(details.progress(DateTime.parse('2026-10-20T10:06:00Z')), 0.75);
+      current.json['steps'] = [
+        step(
+          1,
+          'Setup',
+          'completed',
+          '2026-10-20T10:00:00Z',
+          '2026-10-20T10:02:00Z',
+          'success',
+        ),
+        step(
+          2,
+          'Compile',
+          'completed',
+          '2026-10-20T10:02:00Z',
+          '2026-10-20T10:06:00Z',
+          'failure',
+        ),
+      ];
+      expect(details.failedStep?.$2.name, 'Compile');
+    },
+  );
+
+  test('GitHub loads jobs and the previous successful run', () async {
+    final requested = <String>[];
+    final github = GitHub(
+      client: MockClient((request) async {
+        requested.add(request.url.path);
+        if (request.url.path.endsWith('/jobs')) {
+          return http.Response(
+            jsonEncode({
+              'jobs': [
+                {'name': 'Build', 'steps': []},
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'workflow_runs': [run(3, 1, 'success'), run(2, 1, 'success')],
+          }),
+          200,
+        );
+      }),
+    );
+    final current = BuildRun(run(3, 1, 'success'));
+    expect((await github.jobs(project, current)).single.name, 'Build');
+    expect((await github.previousSuccessfulRun(project, current))?.id, 2);
+    expect(requested, [
+      '/repos/owner/sample/actions/runs/3/jobs',
+      '/repos/owner/sample/actions/workflows/1/runs',
+    ]);
+  });
+  test(
     'authenticated log redirect does not leak the token to storage',
     () async {
       final github = GitHub(

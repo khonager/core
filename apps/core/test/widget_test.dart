@@ -56,6 +56,55 @@ Future<Library> library({bool offline = false}) async {
             200,
           );
         }
+        if (r.url.path.endsWith('/commits')) {
+          return http.Response(
+            jsonEncode([
+              {
+                'sha': 'abcdef123456789',
+                'html_url':
+                    'https://github.com/khonager/core/commit/abcdef123456789',
+                'commit': {
+                  'message': 'Add a new feature\nMore details',
+                  'committer': {'date': '2026-10-20T12:00:00Z'},
+                },
+              },
+            ]),
+            200,
+          );
+        }
+        if (r.url.path.endsWith('/actions/runs/3/jobs') ||
+            r.url.path.endsWith('/actions/runs/2/jobs')) {
+          return http.Response(
+            jsonEncode({
+              'jobs': [
+                {
+                  'name': 'Build',
+                  'started_at': '2026-10-20T10:00:00Z',
+                  'completed_at': '2026-10-20T10:05:00Z',
+                  'steps': [
+                    {
+                      'number': 1,
+                      'name': 'Compile',
+                      'status': 'completed',
+                      'conclusion': 'success',
+                      'started_at': '2026-10-20T10:00:00Z',
+                      'completed_at': '2026-10-20T10:05:00Z',
+                    },
+                  ],
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (r.url.path.contains('/actions/workflows/')) {
+          return http.Response(
+            jsonEncode({
+              'workflow_runs': [run(3, 1, 'success'), run(2, 1, 'success')],
+            }),
+            200,
+          );
+        }
         return http.Response(
           jsonEncode({
             'workflow_runs': [run(3, 1, 'success')],
@@ -70,7 +119,85 @@ Future<Library> library({bool offline = false}) async {
 }
 
 void main() {
-  testWidgets('recent commits appear after the catalog and open on GitHub', (
+  testWidgets('desktop details show commits without scrolling the app list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Recent commits'), findsOneWidget);
+    expect(find.text('Add a new feature'), findsOneWidget);
+    expect(find.text('View build steps'), findsOneWidget);
+    await tester.tap(find.text('View build steps'));
+    await tester.pumpAndSettle();
+    expect(find.text('Compile'), findsOneWidget);
+    expect((lib.device as TestDevice).openedUrls, isEmpty);
+  });
+
+  testWidgets('active build shows current step and prior-build estimates', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    final started = DateTime.now().toUtc().subtract(const Duration(minutes: 3));
+    final state = lib.states['core']!;
+    state.runs = [
+      BuildRun({
+        ...run(8, 1, '', status: 'in_progress'),
+        'run_started_at': started.toIso8601String(),
+      }),
+    ];
+    state.buildDetails[8] = BuildDetails(
+      jobs: [
+        BuildJob({
+          'name': 'Android',
+          'steps': [
+            {
+              'number': 1,
+              'name': 'Compile',
+              'status': 'in_progress',
+              'started_at': started.toIso8601String(),
+            },
+          ],
+        }),
+      ],
+      previousJobs: [
+        BuildJob({
+          'name': 'Android',
+          'started_at': '2026-10-19T10:00:00Z',
+          'completed_at': '2026-10-19T10:10:00Z',
+          'steps': [
+            {
+              'number': 1,
+              'name': 'Compile',
+              'status': 'completed',
+              'conclusion': 'success',
+              'started_at': '2026-10-19T10:00:00Z',
+              'completed_at': '2026-10-19T10:10:00Z',
+            },
+          ],
+        }),
+      ],
+    );
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).last, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    expect(find.text('Now: Android · Compile'), findsOneWidget);
+    expect(find.textContaining('Current step: ~10 min total'), findsOneWidget);
+    expect(find.textContaining('Build: ~10 min total'), findsOneWidget);
+  });
+
+  testWidgets('recent commits appear in app details and open on GitHub', (
     tester,
   ) async {
     final lib = (await tester.runAsync(() => library()))!;
@@ -90,10 +217,9 @@ void main() {
     ];
     await tester.pumpWidget(CoreApp(library: lib));
     await tester.pumpAndSettle();
-    await tester.drag(
-      find.byType(CustomScrollView).first,
-      const Offset(0, -3000),
-    );
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).last, const Offset(0, -3000));
     await tester.pumpAndSettle();
     expect(find.text('Recent commits'), findsOneWidget);
     expect(find.text('Add a new feature'), findsOneWidget);

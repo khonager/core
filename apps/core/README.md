@@ -84,14 +84,15 @@ signing identity have not been configured yet.
 ## First version
 
 - Searchable curated Library and Project details; releases are inside details.
-- A scrollable recent-commits feed below the catalog, combining the latest
-  commits from its repositories. Entries open on GitHub; shared repositories
-  are fetched once. The feed is cached and refreshed with the library.
+- A recent-commits list at the bottom of each project's details page. Entries
+  open on GitHub; commits are fetched when details open and cached locally.
 - Warm eggshell surface, large rounded icons, subdued descriptions.
 - GitHub stable/prerelease data and Markdown changelogs. Stable releases are
   recovered through the latest endpoint when absent from the recent release feed;
   development releases are found by paging through published releases.
 - Latest workflow runs, condensed status separators, links to GitHub Actions.
+  Build cards show GitHub Actions step progress, the running or failed step, and
+  time estimates from the previous successful run of the same workflow.
   Red means any tracked workflow failed; orange means one is still running;
   green means all tracked workflows passed. Cancelled/missing/unavailable data
   is neutral, never falsely green. The first 30 recent runs define the tracked
@@ -149,6 +150,10 @@ explicit refresh every two minutes. It remembers GitHub's rate-limit reset time
 across app restarts and pauses requests until then. This reduces anonymous API
 traffic but does not guarantee availability on networks where many users share
 one IP address. Authenticated GitHub access has a larger per-user allowance.
+While a project page is open, active build steps update every two minutes; the
+build refresh button checks immediately. Progress is based on completed GitHub
+Actions steps, and time estimates use the previous successful run of the same
+workflow. Estimates are unavailable until that history exists.
 
 ### Optional GitHub sign-in
 

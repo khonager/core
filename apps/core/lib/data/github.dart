@@ -154,6 +154,38 @@ class GitHub {
         .toList();
   }
 
+  Future<List<BuildJob>> jobs(Project p, BuildRun run) async {
+    final jobs = <BuildJob>[];
+    var page = 1;
+    while (true) {
+      final data =
+          await get(
+                '/repos/${p.repository}/actions/runs/${run.id}/jobs',
+                query: {'per_page': '100', 'page': '$page'},
+              )
+              as Map<String, dynamic>;
+      final batch = (data['jobs'] as List).cast<Map<String, dynamic>>();
+      jobs.addAll(batch.map(BuildJob.new));
+      if (batch.length < 100) break;
+      page++;
+    }
+    return jobs;
+  }
+
+  Future<BuildRun?> previousSuccessfulRun(Project p, BuildRun run) async {
+    final data =
+        await get(
+              '/repos/${p.repository}/actions/workflows/${run.workflowId}/runs',
+              query: {'status': 'success', 'per_page': '10'},
+            )
+            as Map<String, dynamic>;
+    for (final json
+        in (data['workflow_runs'] as List).cast<Map<String, dynamic>>()) {
+      if (json['id'] != run.id) return BuildRun(json);
+    }
+    return null;
+  }
+
   Future<String> logs(Project p, BuildRun run) async {
     final output = StringBuffer(
       '${p.repository} • ${run.title}\n${run.branch} • ${run.sha}\n${run.url}\n\n',

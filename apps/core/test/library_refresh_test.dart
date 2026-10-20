@@ -130,69 +130,71 @@ void main() {
     expect(library.states[library.projects.first.id]!.buildError, isNull);
   });
 
-  test(
-    'recent commits are sorted, deduplicated by repository, and cached',
-    () async {
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
-      final requestedRepos = <String>[];
-      GitHub github() => GitHub(
-        client: MockClient((request) async {
-          if (request.url.path.endsWith('/commits')) {
-            final repo = request.url.path.split('/')[3];
-            requestedRepos.add(request.url.path);
-            return http.Response(
-              jsonEncode([
-                {
-                  'sha': '${repo}123456789',
-                  'html_url': 'https://github.com/owner/$repo/commit/1',
-                  'commit': {
-                    'message': 'Add $repo feature\nMore detail',
-                    'committer': {
-                      'date': repo == 'core'
-                          ? '2026-10-20T12:00:00Z'
-                          : '2026-10-19T12:00:00Z',
-                    },
+  test('recent commits load per repository and are cached', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final requestedRepos = <String>[];
+    GitHub github() => GitHub(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/commits')) {
+          final repo = request.url.path.split('/')[3];
+          requestedRepos.add(request.url.path);
+          return http.Response(
+            jsonEncode([
+              {
+                'sha': '${repo}123456789',
+                'html_url': 'https://github.com/owner/$repo/commit/1',
+                'commit': {
+                  'message': 'Add $repo feature\nMore detail',
+                  'committer': {
+                    'date': repo == 'core'
+                        ? '2026-10-20T12:00:00Z'
+                        : '2026-10-19T12:00:00Z',
                   },
                 },
-              ]),
-              200,
-            );
-          }
-          return request.url.path.endsWith('/actions/runs')
-              ? http.Response(jsonEncode({'workflow_runs': []}), 200)
-              : http.Response('[]', 200);
-        }),
-      );
+              },
+            ]),
+            200,
+          );
+        }
+        return request.url.path.endsWith('/actions/runs')
+            ? http.Response(jsonEncode({'workflow_runs': []}), 200)
+            : http.Response('[]', 200);
+      }),
+    );
 
-      final first = Library(
-        preferences: preferences,
-        github: github(),
-        device: TestDevice(),
-      );
-      await first.init();
-      expect(first.commits.first.project.id, 'core');
-      expect(first.commits.first.title, 'Add core feature');
-      expect(
-        requestedRepos.where((path) => path.endsWith('/files/commits')),
-        hasLength(1),
-      );
-      expect(
-        requestedRepos.length,
-        first.projects.map((project) => project.repository).toSet().length,
-      );
-      first.dispose();
+    final first = Library(
+      preferences: preferences,
+      github: github(),
+      device: TestDevice(),
+    );
+    await first.init();
+    await first.refreshCommits(first.projects.first);
+    await first.refreshCommits(
+      first.projects.firstWhere((p) => p.id == 'files'),
+    );
+    await first.refreshCommits(
+      first.projects.firstWhere((p) => p.id == 'wisec'),
+    );
+    expect(first.commits.first.project.id, 'core');
+    expect(first.commits.first.title, 'Add core feature');
+    expect(
+      requestedRepos.where((path) => path.endsWith('/files/commits')),
+      hasLength(1),
+    );
+    expect(requestedRepos.length, 2);
+    first.dispose();
 
-      requestedRepos.clear();
-      final second = Library(
-        preferences: preferences,
-        github: github(),
-        device: TestDevice(),
-      );
-      addTearDown(second.dispose);
-      await second.init();
-      expect(second.commits.first.title, 'Add core feature');
-      expect(requestedRepos, isEmpty);
-    },
-  );
+    requestedRepos.clear();
+    final second = Library(
+      preferences: preferences,
+      github: github(),
+      device: TestDevice(),
+    );
+    addTearDown(second.dispose);
+    await second.init();
+    await second.refreshCommits(second.projects.first);
+    expect(second.commits.first.title, 'Add core feature');
+    expect(requestedRepos, isEmpty);
+  });
 }

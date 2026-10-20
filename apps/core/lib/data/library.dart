@@ -25,8 +25,8 @@ class Library extends ChangeNotifier {
   final downloads = <String, Map<String, dynamic>>{};
   final installed = <String, String>{};
   List<ProjectCommit> commits = [];
-  String? commitsError;
-  bool commitsLoading = false;
+  final commitsErrors = <String, String>{};
+  final commitsLoading = <String>{};
   String? error, deviceError;
   bool refreshing = false, _disposed = false, _polling = false;
   Timer? _timer;
@@ -126,19 +126,19 @@ class Library extends ChangeNotifier {
       }
       await refreshProject(project, automatic: automatic);
     }
-    await refreshCommits(automatic: automatic);
     refreshing = false;
     changed();
   }
 
-  Future<void> refreshCommits({bool automatic = false}) async {
-    if (commitsLoading) return;
+  Future<void> refreshCommits(Project p, {bool automatic = true}) async {
+    if (commitsLoading.contains(p.repository)) return;
     if (github.rateLimited) {
-      commitsError = github.rateLimitMessage;
+      commitsErrors[p.repository] = github.rateLimitMessage;
       changed();
       return;
     }
-    final previous = preferences.getInt('commits.refresh.v1');
+    final attemptKey = 'commits.refresh.v1.${p.repository}';
+    final previous = preferences.getInt(attemptKey);
     final interval = automatic
         ? const Duration(minutes: 30)
         : const Duration(minutes: 2);
@@ -149,27 +149,15 @@ class Library extends ChangeNotifier {
             interval) {
       return;
     }
-    await preferences.setInt(
-      'commits.refresh.v1',
-      DateTime.now().millisecondsSinceEpoch,
-    );
-    commitsLoading = true;
+    await preferences.setInt(attemptKey, DateTime.now().millisecondsSinceEpoch);
+    commitsLoading.add(p.repository);
     changed();
-    final fetched = <ProjectCommit>[];
-    var failures = 0;
-    final seen = <String>{};
-    for (final project in projects) {
-      if (!seen.add(project.repository)) continue;
-      if (github.rateLimited) break;
-      try {
-        fetched.addAll(await github.commits(project));
-      } catch (_) {
-        failures++;
-      }
-    }
-    if (fetched.isNotEmpty || failures == 0) {
-      fetched.sort((a, b) => b.date.compareTo(a.date));
-      commits = fetched.take(30).toList();
+    try {
+      final fetched = await github.commits(p);
+      commits = [
+        ...commits.where((entry) => entry.project.repository != p.repository),
+        ...fetched,
+      ]..sort((a, b) => b.date.compareTo(a.date));
       try {
         await preferences.setString(
           'commits.cache.v1',
@@ -183,14 +171,79 @@ class Library extends ChangeNotifier {
       } catch (_) {
         // Live commits remain visible if local storage fails.
       }
+      commitsErrors.remove(p.repository);
+    } catch (e) {
+      commitsErrors[p.repository] = _message(e);
     }
-    commitsError = github.rateLimited
-        ? github.rateLimitMessage
-        : failures > 0
-        ? 'Some repositories could not be checked. Pull down to retry.'
-        : null;
-    commitsLoading = false;
+    commitsLoading.remove(p.repository);
     changed();
+  }
+
+  final _historicalJobs = <int, List<BuildJob>>{};
+
+  Future<void> loadBuildDetails(
+    Project p,
+    BuildRun run, {
+    bool force = false,
+  }) async {
+    final state = states[p.id]!;
+    if (state.buildDetailsLoading.contains(run.id) ||
+        (!force &&
+            (state.buildDetails.containsKey(run.id) ||
+                state.buildDetailsErrors.containsKey(run.id)))) {
+      return;
+    }
+    if (github.rateLimited) {
+      state.buildDetailsErrors[run.id] = github.rateLimitMessage;
+      changed();
+      return;
+    }
+    state.buildDetailsLoading.add(run.id);
+    changed();
+    try {
+      final jobs = await github.jobs(p, run);
+      List<BuildJob> previousJobs = [];
+      BuildRun? previousRun;
+      try {
+        previousRun = await github.previousSuccessfulRun(p, run);
+        if (previousRun != null) {
+          previousJobs =
+              _historicalJobs[previousRun.id] ??
+              await github.jobs(p, previousRun);
+          _historicalJobs[previousRun.id] = previousJobs;
+        }
+      } catch (_) {
+        // Current step information remains useful without an estimate.
+      }
+      state.buildDetails[run.id] = BuildDetails(
+        jobs: jobs,
+        previousJobs: previousJobs,
+        previousRun: previousRun,
+      );
+      state.buildDetailsErrors.remove(run.id);
+    } catch (e) {
+      state.buildDetailsErrors[run.id] = _message(e);
+    } finally {
+      state.buildDetailsLoading.remove(run.id);
+      changed();
+    }
+  }
+
+  Future<void> refreshBuilds(Project p) async {
+    final state = states[p.id]!;
+    if (github.rateLimited) return;
+    try {
+      state.runs = await github.runs(p);
+      state.buildError = null;
+      changed();
+      for (final run in state.runs) {
+        await loadBuildDetails(p, run, force: true);
+        if (github.rateLimited) break;
+      }
+    } catch (e) {
+      state.buildError = _message(e);
+      changed();
+    }
   }
 
   Future<void> refreshProject(Project p, {bool automatic = false}) async {
@@ -359,9 +412,12 @@ class Library extends ChangeNotifier {
   Future<void> _clearAccountCache() async {
     await preferences.remove('github.rateLimitUntil');
     await preferences.remove('commits.cache.v1');
-    await preferences.remove('commits.refresh.v1');
+    for (final repository in projects.map((p) => p.repository).toSet()) {
+      await preferences.remove('commits.refresh.v1.$repository');
+    }
     commits = [];
-    commitsError = null;
+    commitsErrors.clear();
+    _historicalJobs.clear();
     // Clear account-dependent cached data when changing access.
     for (final project in projects) {
       await preferences.remove('cache.v1.${project.id}');
