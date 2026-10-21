@@ -612,9 +612,22 @@ class _DetailsScreenState extends State<DetailsScreen> {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
-                      Text(
-                        '${release.date.day}.${release.date.month}.${release.date.year}',
-                        style: Theme.of(context).textTheme.bodySmall,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            MaterialLocalizations.of(
+                              context,
+                            ).formatMediumDate(release.date.toLocal()),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          Text(
+                            TimeOfDay.fromDateTime(
+                              release.date.toLocal(),
+                            ).format(context),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                     ],
                   ),

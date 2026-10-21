@@ -4,12 +4,14 @@ class Project {
     required this.name,
     required this.description,
     required this.repository,
+    this.category = 'Other',
     this.icon,
     this.website,
     this.packageId,
     this.devPackageId,
   });
   final String id, name, description, repository;
+  final String category;
   final String? icon, website, packageId, devPackageId;
   String get githubUrl => 'https://github.com/$repository';
   factory Project.fromJson(Map<String, dynamic> j) {
@@ -22,6 +24,7 @@ class Project {
       name: j['name'] as String,
       description: j['description'] as String,
       repository: repo,
+      category: j['category'] as String? ?? 'Other',
       icon: j['icon'] as String?,
       website: j['website'] as String?,
       packageId: j['packageId'] as String?,

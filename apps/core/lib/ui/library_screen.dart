@@ -5,6 +5,8 @@ import '../domain/project.dart';
 import 'details_screen.dart';
 import 'theme.dart';
 
+enum AppSort { lastUpdate, category, name }
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, required this.library});
   final Library library;
@@ -16,6 +18,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     with WidgetsBindingObserver {
   final search = TextEditingController();
   Project? selected;
+  AppSort sort = AppSort.lastUpdate;
   @override
   void initState() {
     super.initState();
@@ -60,6 +63,37 @@ class _LibraryScreenState extends State<LibraryScreen>
               (p) => '${p.name} ${p.description}'.toLowerCase().contains(query),
             )
             .toList();
+        final catalogOrder = {
+          for (var i = 0; i < widget.library.projects.length; i++)
+            widget.library.projects[i].id: i,
+        };
+        items.sort((a, b) {
+          final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          switch (sort) {
+            case AppSort.name:
+              return byName;
+            case AppSort.category:
+              final byCategory = a.category.toLowerCase().compareTo(
+                b.category.toLowerCase(),
+              );
+              return byCategory != 0 ? byCategory : byName;
+            case AppSort.lastUpdate:
+              final aDate =
+                  widget.library.states[a.id]?.releases.firstOrNull?.date;
+              final bDate =
+                  widget.library.states[b.id]?.releases.firstOrNull?.date;
+              if (aDate == null) {
+                return bDate == null
+                    ? catalogOrder[a.id]!.compareTo(catalogOrder[b.id]!)
+                    : 1;
+              }
+              if (bDate == null) return -1;
+              final byDate = bDate.compareTo(aDate);
+              return byDate != 0
+                  ? byDate
+                  : catalogOrder[a.id]!.compareTo(catalogOrder[b.id]!);
+          }
+        });
         final list = Scaffold(
           body: SafeArea(
             child: RefreshIndicator(
@@ -82,6 +116,27 @@ class _LibraryScreenState extends State<LibraryScreen>
                                     context,
                                   ).textTheme.headlineLarge,
                                 ),
+                              ),
+                              PopupMenuButton<AppSort>(
+                                tooltip: 'Sort apps',
+                                icon: const Icon(Icons.sort_rounded),
+                                initialValue: sort,
+                                onSelected: (value) =>
+                                    setState(() => sort = value),
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: AppSort.lastUpdate,
+                                    child: Text('Last update'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: AppSort.category,
+                                    child: Text('Category'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: AppSort.name,
+                                    child: Text('Name'),
+                                  ),
+                                ],
                               ),
                               IconButton(
                                 onPressed: widget.library.refreshing
@@ -277,6 +332,11 @@ class AppRow extends StatelessWidget {
                           Text(
                             project.description,
                             style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            project.category,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),

@@ -4,6 +4,7 @@ import 'package:core_app/data/library.dart';
 import 'package:core_app/domain/project.dart';
 import 'package:core_app/main.dart';
 import 'package:core_app/platform/device.dart';
+import 'package:core_app/ui/library_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +121,53 @@ Future<Library> library({bool offline = false}) async {
 }
 
 void main() {
+  testWidgets('sorts apps by update, category, and name', (tester) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    lib.states['core']!.releases = [
+      Release(release('v2', false, '2026-10-20T12:00:00Z')),
+    ];
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+
+    String firstApp() =>
+        tester.widget<AppRow>(find.byType(AppRow).first).project.name;
+    expect(firstApp(), 'Core');
+
+    await tester.tap(find.byTooltip('Sort apps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Name').last);
+    await tester.pumpAndSettle();
+    expect(firstApp(), 'AdWise');
+
+    await tester.tap(find.byTooltip('Sort apps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Category').last);
+    await tester.pumpAndSettle();
+    final rows = tester.widgetList<AppRow>(find.byType(AppRow)).toList();
+    expect(rows.take(3).map((row) => row.project.name), [
+      'AdWise',
+      'Trace',
+      'TipStroke',
+    ]);
+  });
+
+  testWidgets('latest release includes its local publication time', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    final date = lib.states['core']!.latest(false)!.date.toLocal();
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    final time = TimeOfDay.fromDateTime(
+      date,
+    ).format(tester.element(find.byType(AppRow).first));
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    expect(find.text(time), findsOneWidget);
+  });
+
   testWidgets('opening one app fetches only that repository', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final paths = <String>[];
