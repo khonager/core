@@ -311,7 +311,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
             children: [
               Text(
                 lib.device.secureStorage
-                    ? 'For restricted build logs, add a fine-grained GitHub token with Actions: read permission for your projects. It is stored in this device\'s secure storage.'
+                    ? 'For private releases and build logs, add a fine-grained GitHub token with Contents: read and Actions: read permission for the selected repositories. It is stored in this device\'s secure storage.'
                     : 'Tokens in this browser preview are held in memory for this session only. Log downloads may require the desktop or Android app.',
               ),
               const SizedBox(height: 16),
@@ -476,10 +476,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
     );
     if (asset == null) return;
     await action(() async {
+      final url = await lib.apkDownloadUrl(asset);
       await lib.device.download(
         '${p.id}.${dev ? 'dev' : 'stable'}',
         asset['name'] as String,
-        asset['browser_download_url'] as String,
+        url,
         packageId,
       );
       await lib.pollDevice();
@@ -586,7 +587,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     onSignIn:
                         lib.device.secureStorage &&
                             lib.auth.configured &&
-                            lib.github.rateLimited
+                            !lib.github.connected
                         ? signIn
                         : null,
                   ),
@@ -745,7 +746,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   onSignIn:
                       lib.device.secureStorage &&
                           lib.auth.configured &&
-                          lib.github.rateLimited
+                          !lib.github.connected
                       ? signIn
                       : null,
                 ),
@@ -827,12 +828,23 @@ class _DetailsScreenState extends State<DetailsScreen> {
                 onPressed: () => open(p.githubUrl),
                 child: Text(p.repository),
               ),
-              if (lib.github.connected)
+              if (!lib.github.connected &&
+                  lib.device.secureStorage &&
+                  lib.auth.configured)
                 TextButton.icon(
-                  onPressed: busy ? null : access,
-                  icon: const Icon(Icons.key_rounded, size: 18),
-                  label: const Text('Manage GitHub access'),
+                  onPressed: busy ? null : signIn,
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: const Text('Sign in to GitHub'),
                 ),
+              TextButton.icon(
+                onPressed: busy ? null : access,
+                icon: const Icon(Icons.key_rounded, size: 18),
+                label: Text(
+                  lib.github.connected
+                      ? 'Manage GitHub access'
+                      : 'Connect GitHub token',
+                ),
+              ),
               if (lib.deviceError != null) Notice(lib.deviceError!),
               if (s.checked != null)
                 Center(

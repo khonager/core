@@ -127,9 +127,12 @@ uses a separate ID; otherwise Core checks against the stable package ID. All
 listed APKs are offered with their filenames; users choose their architecture.
 Android performs final signing, version, and device-compatibility validation.
 Core does not silently replace apps or bypass Android prompts. CI artifacts,
-private releases, split-APK bundles, and background auto-updates are not supported.
+split-APK bundles, and background auto-updates are not supported. Private
+GitHub release APKs can be installed on Android after connecting GitHub access.
 
-The catalog includes the owner's apps and verified websites. App entries can
+The catalog includes the owner's apps and verified websites. Riverfold's signed
+tag builds publish `riverfold.apk` as a stable GitHub Release; its branch builds
+are workflow artifacts and do not appear as installable releases. App entries can
 also link to their websites; standalone sites such as Files and Karma Tracker
 have their own entries. Some repositories are private, so public browsing may
 show unavailable release and build data for those entries.
@@ -138,9 +141,11 @@ show unavailable release and build data for those entries.
 
 No Core server, Core account, analytics, or rating service. GitHub receives API
 requests from the device and applies its rate limits. Public browsing needs no
-credentials. Restricted logs can use an optional fine-grained personal access
-token with Actions: read permission for selected repositories. The token dialog
-appears when a user requests a restricted log. Android and Linux
+credentials. Private releases and restricted logs can use a fine-grained
+personal access token for selected repositories. Give it **Contents: read** for
+releases and **Actions: read** for build activity and logs. Friends need their
+own GitHub access to each private repository before a token or sign-in can read
+it. Open any project and choose **Connect GitHub token**. Android and Linux
 store the token using `flutter_secure_storage`; the web preview holds it only in
 memory until reload. Disconnect from Manage GitHub access to delete the token and
 clear account-dependent cached metadata. Tokens are never forwarded to signed
@@ -181,13 +186,16 @@ To configure this for builds:
    `--dart-define=GITHUB_CLIENT_ID=Iv1.YOUR_CLIENT_ID` to `flutter run` or
    `flutter build apk`.
 
-Without that client ID, the sign-in action is hidden and public browsing keeps
-working. To read private repositories through GitHub App access, the app must
-also be installed on those repositories and the signed-in user must have access.
+Without that client ID, the sign-in action is hidden; connecting a fine-grained
+token still works. To read private repositories through GitHub App sign-in, the
+app must also be installed on those repositories and the signed-in user must
+have access. Each friend sees only repositories allowed by both their GitHub
+permissions and the app installation.
 
 Core stores release/build metadata and notification preferences locally. GitHub
-access also allows reading private metadata, but private APK downloads are not
-yet supported by the Android DownloadManager integration. Expired logs remain
+access also allows reading private metadata and downloading private release
+APKs. Core requests the APK through GitHub's authenticated API and passes only
+the short-lived GitHub asset URL to Android's DownloadManager. Expired logs remain
 unavailable even with a token. Large logs are loaded into memory for copying;
 web previews may encounter cross-origin limits. No OAuth client registration or
 backend is required for the token flow.

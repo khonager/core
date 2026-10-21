@@ -48,6 +48,61 @@ Map<String, dynamic> run(
   'html_url': 'https://github.com/owner/sample/actions/runs/$id',
 };
 void main() {
+  test(
+    'private APK resolves through the asset API without leaking access',
+    () async {
+      final github = GitHub(
+        client: MockClient((request) async {
+          expect(
+            request.url.toString(),
+            'https://api.github.com/repos/owner/sample/releases/assets/123',
+          );
+          expect(request.headers['authorization'], 'Bearer test-token');
+          expect(request.headers['accept'], 'application/octet-stream');
+          expect(request.followRedirects, false);
+          return http.Response(
+            '',
+            302,
+            headers: {
+              'location':
+                  'https://release-assets.githubusercontent.com/signed?token=short-lived',
+            },
+          );
+        }),
+      )..token = 'test-token';
+      final url = await github.apkDownloadUrl({
+        'url': 'https://api.github.com/repos/owner/sample/releases/assets/123',
+        'browser_download_url':
+            'https://github.com/owner/sample/releases/download/v1/app.apk',
+      });
+      expect(url, startsWith('https://release-assets.githubusercontent.com/'));
+    },
+  );
+
+  test(
+    'private APK rejects redirects away from GitHub asset storage',
+    () async {
+      final github = GitHub(
+        client: MockClient(
+          (_) async => http.Response(
+            '',
+            302,
+            headers: {'location': 'https://example.com/app.apk'},
+          ),
+        ),
+      )..token = 'test-token';
+      expect(
+        () => github.apkDownloadUrl({
+          'url':
+              'https://api.github.com/repos/owner/sample/releases/assets/123',
+          'browser_download_url':
+              'https://github.com/owner/sample/releases/download/v1/app.apk',
+        }),
+        throwsA(isA<GitHubException>()),
+      );
+    },
+  );
+
   test('release channels use publication order and exclude drafts', () {
     final releases = parseReleases([
       release('v1', false, '2025-01-01'),

@@ -145,6 +145,54 @@ class GitHub {
       ? 'GitHub rate limit reached. Try again after ${_rateLimitedUntil!.toLocal().hour.toString().padLeft(2, '0')}:${_rateLimitedUntil!.toLocal().minute.toString().padLeft(2, '0')}.'
       : 'GitHub rate limit reached. Try again later.';
 
+  /// Resolve a release asset while the GitHub token is still in this process.
+  /// DownloadManager receives only GitHub's short-lived storage URL, never the
+  /// token. A public release still uses its normal browser URL.
+  Future<String> apkDownloadUrl(Map<String, dynamic> asset) async {
+    final publicUrl = asset['browser_download_url'] as String;
+    if (!connected) return publicUrl;
+    final apiUrl = Uri.tryParse(asset['url'] as String? ?? '');
+    if (apiUrl == null ||
+        apiUrl.scheme != 'https' ||
+        apiUrl.host != 'api.github.com' ||
+        !RegExp(
+          r'^/repos/[^/]+/[^/]+/releases/assets/\d+$',
+        ).hasMatch(apiUrl.path)) {
+      throw GitHubException('GitHub returned an invalid APK asset link.');
+    }
+    final request = http.Request('GET', apiUrl)
+      ..followRedirects = false
+      ..headers.addAll({...headers, 'Accept': 'application/octet-stream'});
+    final response = await client
+        .send(request)
+        .timeout(const Duration(seconds: 20));
+    // Do not buffer an APK if GitHub streams the asset instead of redirecting.
+    await response.stream.listen((_) {}).cancel();
+    if (response.statusCode == 302 || response.statusCode == 301) {
+      final target = Uri.tryParse(response.headers['location'] ?? '');
+      if (target != null &&
+          target.scheme == 'https' &&
+          (target.host == 'release-assets.githubusercontent.com' ||
+              target.host == 'objects.githubusercontent.com')) {
+        return target.toString();
+      }
+      throw GitHubException('GitHub returned an unsafe APK download link.');
+    }
+    if (response.statusCode == 401 ||
+        response.statusCode == 403 ||
+        response.statusCode == 404) {
+      throw GitHubException(
+        'This APK needs GitHub access to its repository. Connect an account or token with Contents: read permission.',
+        needsAccess: true,
+        statusCode: response.statusCode,
+      );
+    }
+    throw GitHubException(
+      'GitHub could not prepare this APK download (${response.statusCode}). Try again.',
+      statusCode: response.statusCode,
+    );
+  }
+
   Future<List<Release>> releases(Project p) async {
     final releases = <Release>[];
     var page = 1;

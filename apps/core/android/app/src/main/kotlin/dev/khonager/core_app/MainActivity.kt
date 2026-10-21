@@ -36,7 +36,9 @@ class MainActivity : FlutterActivity() {
                         "status" -> result.success(status(id, pkg))
                         "download" -> {
                             val url = Uri.parse(call.argument<String>("url")!!)
-                            require(url.scheme == "https" && url.host == "github.com" && url.path?.contains("/releases/download/") == true) { "Only GitHub release APKs can be downloaded." }
+                            val publicRelease = url.host == "github.com" && url.path?.contains("/releases/download/") == true
+                            val signedAsset = url.host == "release-assets.githubusercontent.com" || url.host == "objects.githubusercontent.com"
+                            require(url.scheme == "https" && (publicRelease || signedAsset)) { "Only GitHub release APKs can be downloaded." }
                             require(!pkg.isNullOrBlank()) { "This project has no configured Android package ID." }
                             cancel(id)
                             val file = apkFile(id)

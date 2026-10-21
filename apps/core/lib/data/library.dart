@@ -418,6 +418,11 @@ class Library extends ChangeNotifier {
     github.token = updated.token;
   }
 
+  Future<String> apkDownloadUrl(Map<String, dynamic> asset) async {
+    await _ensureAuth();
+    return github.apkDownloadUrl(asset);
+  }
+
   bool enabled(Project p, String type) =>
       preferences.getBool('notify.${p.id}.$type') ?? false;
   Future<bool> setNotification(Project p, String type, bool enabled) async {
