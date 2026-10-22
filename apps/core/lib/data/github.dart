@@ -258,17 +258,25 @@ class GitHub {
     return latest;
   }
 
-  Future<List<ProjectCommit>> commits(Project p) async {
+  Future<List<ProjectCommit>> commits(
+    Project p, {
+    String? ref,
+    bool dev = false,
+  }) async {
+    final query = {'per_page': '5'};
+    if (ref != null) query['sha'] = ref;
     final data =
         await get(
               '/repos/${p.repository}/commits',
-              query: {'per_page': '5'},
-              maxAge: const Duration(minutes: 30),
+              query: query,
+              maxAge: dev
+                  ? const Duration(minutes: 2)
+                  : const Duration(minutes: 30),
             )
             as List;
     return data
         .cast<Map<String, dynamic>>()
-        .map((json) => ProjectCommit(project: p, json: json))
+        .map((json) => ProjectCommit(project: p, json: json, dev: dev))
         .toList();
   }
 

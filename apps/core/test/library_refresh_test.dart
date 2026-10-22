@@ -306,4 +306,75 @@ void main() {
     expect(second.commits.first.title, 'Add core feature');
     expect(requestedRepos, isEmpty);
   });
+
+  test('stable and development commits keep separate caches', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final requestedRefs = <String?>[];
+    GitHub github() => GitHub(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/commits')) {
+          final ref = request.url.queryParameters['sha'];
+          requestedRefs.add(ref);
+          return http.Response(
+            jsonEncode([
+              {
+                'sha': ref == null ? 'stable123456789' : 'dev123456789',
+                'html_url': 'https://github.com/owner/core/commit/1',
+                'commit': {
+                  'message': ref == null ? 'Stable change' : 'Dev change',
+                  'committer': {'date': '2026-10-22T12:00:00Z'},
+                },
+              },
+            ]),
+            200,
+          );
+        }
+        return http.Response('[]', 200);
+      }),
+    );
+    final first = Library(
+      preferences: preferences,
+      github: github(),
+      device: TestDevice(),
+    );
+    await first.init();
+    final project = first.projects.first;
+    first.states[project.id]!.releases = [
+      Release({
+        'tag_name': 'dev',
+        'prerelease': true,
+        'published_at': '2026-10-22T12:00:00Z',
+        'assets': [],
+      }),
+    ];
+    await first.refreshCommits(project);
+    await first.refreshCommits(project, dev: true);
+    expect(requestedRefs, [null, 'dev']);
+    expect(
+      first.commits.where((entry) => entry.dev).single.title,
+      'Dev change',
+    );
+    expect(
+      first.commits.where((entry) => !entry.dev).single.title,
+      'Stable change',
+    );
+    first.dispose();
+
+    final second = Library(
+      preferences: preferences,
+      github: github(),
+      device: TestDevice(),
+    );
+    addTearDown(second.dispose);
+    await second.init();
+    expect(
+      second.commits.where((entry) => entry.dev).single.title,
+      'Dev change',
+    );
+    expect(
+      second.commits.where((entry) => !entry.dev).single.title,
+      'Stable change',
+    );
+  });
 }

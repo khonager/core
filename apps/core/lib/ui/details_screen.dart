@@ -40,7 +40,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
       await lib.refreshProject(p, automatic: true);
       if (!mounted) return;
       initialMetadataReady = true;
-      lib.refreshCommits(p);
+      lib.refreshCommits(p, dev: dev);
       loadVisibleBuilds();
     });
     buildPoll = Timer.periodic(const Duration(minutes: 2), (_) {
@@ -78,7 +78,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
 
   Future<void> refreshDetails() async {
     await lib.refreshProject(p);
-    await lib.refreshCommits(p, automatic: false);
+    await lib.refreshCommits(p, dev: dev, automatic: false);
     await lib.refreshBuilds(p);
   }
 
@@ -575,7 +575,10 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     ButtonSegment(value: true, label: Text('Development')),
                   ],
                   selected: {dev},
-                  onSelectionChanged: (v) => setState(() => dev = v.first),
+                  onSelectionChanged: (v) {
+                    setState(() => dev = v.first);
+                    lib.refreshCommits(p, dev: dev);
+                  },
                 ),
                 const SizedBox(height: 20),
                 if (s.releaseError != null)
@@ -870,23 +873,27 @@ class _DetailsScreenState extends State<DetailsScreen> {
               const Divider(),
               const SizedBox(height: 20),
               Text(
-                'Recent commits',
+                dev ? 'Recent development commits' : 'Recent commits',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              if (lib.commitsErrors[p.repository] case final error?)
+              if (lib.commitsErrors[lib.commitKey(p, dev)] case final error?)
                 Text(error, style: Theme.of(context).textTheme.bodySmall),
-              if (lib.commitsLoading.contains(p.repository))
+              if (lib.commitsLoading.contains(lib.commitKey(p, dev)))
                 const LinearProgressIndicator(),
-              if (!lib.commitsLoading.contains(p.repository) &&
+              if (!lib.commitsLoading.contains(lib.commitKey(p, dev)) &&
                   lib.commits
                       .where(
-                        (entry) => entry.project.repository == p.repository,
+                        (entry) =>
+                            entry.project.repository == p.repository &&
+                            entry.dev == dev,
                       )
                       .isEmpty)
                 const Text('No recent commits available.'),
               for (final commit in lib.commits.where(
-                (entry) => entry.project.repository == p.repository,
+                (entry) =>
+                    entry.project.repository == p.repository &&
+                    entry.dev == dev,
               ))
                 ListTile(
                   contentPadding: EdgeInsets.zero,

@@ -130,6 +130,29 @@ void main() {
     expect(state.latest(true)!.date, DateTime.utc(2026, 10, 22, 8, 2, 52));
     expect(state.latest(false)!.date, DateTime.utc(2026, 10, 20, 12));
   });
+  test('development commits follow the release tag', () async {
+    final github = GitHub(
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['sha'], 'dev');
+        return http.Response(
+          jsonEncode([
+            {
+              'sha': '8a4cb3137d7d44ba304f161ae7115ad894b74de6',
+              'html_url': 'https://github.com/owner/sample/commit/8a4cb31',
+              'commit': {
+                'message': 'Latest development change',
+                'committer': {'date': '2026-10-22T07:58:09Z'},
+              },
+            },
+          ]),
+          200,
+        );
+      }),
+    );
+    final commits = await github.commits(project, ref: 'dev', dev: true);
+    expect(commits.single.dev, isTrue);
+    expect(commits.single.title, 'Latest development change');
+  });
   test(
     'latest successful workflow does not hide another failing workflow',
     () async {

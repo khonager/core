@@ -58,14 +58,17 @@ Future<Library> library({bool offline = false}) async {
           );
         }
         if (r.url.path.endsWith('/commits')) {
+          final development = r.url.queryParameters['sha'] != null;
           return http.Response(
             jsonEncode([
               {
-                'sha': 'abcdef123456789',
+                'sha': development ? 'fedcba123456789' : 'abcdef123456789',
                 'html_url':
-                    'https://github.com/khonager/core/commit/abcdef123456789',
+                    'https://github.com/khonager/core/commit/${development ? 'fedcba123456789' : 'abcdef123456789'}',
                 'commit': {
-                  'message': 'Add a new feature\nMore details',
+                  'message': development
+                      ? 'Add development feature'
+                      : 'Add a new feature\nMore details',
                   'committer': {'date': '2026-10-20T12:00:00Z'},
                 },
               },
@@ -217,6 +220,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Compile'), findsOneWidget);
     expect((lib.device as TestDevice).openedUrls, isEmpty);
+  });
+
+  testWidgets('development tab shows commits from its release tag', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Development'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Add development feature'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Recent development commits'), findsOneWidget);
+    expect(find.text('Add development feature'), findsOneWidget);
+    expect(find.text('Add a new feature'), findsNothing);
   });
 
   testWidgets('active build shows current step and prior-build estimates', (

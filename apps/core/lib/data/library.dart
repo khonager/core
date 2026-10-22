@@ -62,7 +62,7 @@ class Library extends ChangeNotifier {
       }
       try {
         final saved =
-            jsonDecode(preferences.getString('commits.cache.v1') ?? '{}')
+            jsonDecode(preferences.getString('commits.cache.v2') ?? '{}')
                 as Map<String, dynamic>;
         final byId = {for (final p in projects) p.id: p};
         commits = (saved['entries'] as List? ?? [])
@@ -72,6 +72,7 @@ class Library extends ChangeNotifier {
               (entry) => ProjectCommit(
                 project: byId[entry['projectId']]!,
                 json: entry['commit'] as Map<String, dynamic>,
+                dev: entry['dev'] == true,
               ),
             )
             .toList();
@@ -145,17 +146,27 @@ class Library extends ChangeNotifier {
     changed();
   }
 
-  Future<void> refreshCommits(Project p, {bool automatic = true}) async {
-    if (commitsLoading.contains(p.repository)) return;
+  String commitKey(Project p, bool dev) =>
+      '${p.repository}:${dev ? 'dev' : 'stable'}';
+
+  Future<void> refreshCommits(
+    Project p, {
+    bool dev = false,
+    bool automatic = true,
+  }) async {
+    final ref = dev ? states[p.id]?.latest(true)?.tag : null;
+    if (dev && ref == null) return;
+    final key = commitKey(p, dev);
+    if (commitsLoading.contains(key)) return;
     if (github.rateLimited) {
-      commitsErrors[p.repository] = github.rateLimitMessage;
+      commitsErrors[key] = github.rateLimitMessage;
       changed();
       return;
     }
-    final attemptKey = 'commits.refresh.v1.${p.repository}';
+    final attemptKey = 'commits.refresh.v2.$key';
     final previous = preferences.getInt(attemptKey);
     final interval = automatic
-        ? const Duration(minutes: 30)
+        ? (dev ? const Duration(minutes: 5) : const Duration(minutes: 30))
         : const Duration(minutes: 2);
     if (previous != null &&
         DateTime.now().difference(
@@ -165,32 +176,39 @@ class Library extends ChangeNotifier {
       return;
     }
     await preferences.setInt(attemptKey, DateTime.now().millisecondsSinceEpoch);
-    commitsLoading.add(p.repository);
+    commitsLoading.add(key);
     changed();
     try {
-      final fetched = await github.commits(p);
+      final fetched = await github.commits(p, ref: ref, dev: dev);
       commits = [
-        ...commits.where((entry) => entry.project.repository != p.repository),
+        ...commits.where(
+          (entry) =>
+              entry.project.repository != p.repository || entry.dev != dev,
+        ),
         ...fetched,
       ]..sort((a, b) => b.date.compareTo(a.date));
       try {
         await preferences.setString(
-          'commits.cache.v1',
+          'commits.cache.v2',
           jsonEncode({
             'entries': [
               for (final entry in commits)
-                {'projectId': entry.project.id, 'commit': entry.json},
+                {
+                  'projectId': entry.project.id,
+                  'dev': entry.dev,
+                  'commit': entry.json,
+                },
             ],
           }),
         );
       } catch (_) {
         // Live commits remain visible if local storage fails.
       }
-      commitsErrors.remove(p.repository);
+      commitsErrors.remove(key);
     } catch (e) {
-      commitsErrors[p.repository] = _message(e);
+      commitsErrors[key] = _message(e);
     }
-    commitsLoading.remove(p.repository);
+    commitsLoading.remove(key);
     await _saveBudget();
     changed();
   }

@@ -34,9 +34,10 @@ class Project {
 }
 
 class ProjectCommit {
-  ProjectCommit({required this.project, required this.json});
+  ProjectCommit({required this.project, required this.json, this.dev = false});
   final Project project;
   final Map<String, dynamic> json;
+  final bool dev;
 
   String get title =>
       ((json['commit'] as Map<String, dynamic>)['message'] as String? ?? '')
