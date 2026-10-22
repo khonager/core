@@ -115,6 +115,21 @@ void main() {
     expect(state.latest(true)!.tag, 'v2-dev');
     expect(state.latest(false)!.apks.single['name'], 'app.apk');
   });
+  test('rolling development release uses the latest APK upload time', () {
+    final rolling = release('dev', true, '2026-10-19T12:24:42Z');
+    (rolling['assets'] as List).first['updated_at'] = '2026-10-22T08:02:52Z';
+    final stable = release('stable', false, '2026-10-20T12:00:00Z');
+    (stable['assets'] as List).first['updated_at'] = '2026-10-23T08:02:52Z';
+    final state = ProjectState()
+      ..releases = parseReleases([
+        release('older-dev', true, '2026-10-21T12:00:00Z'),
+        rolling,
+        stable,
+      ]);
+    expect(state.latest(true)!.tag, 'dev');
+    expect(state.latest(true)!.date, DateTime.utc(2026, 10, 22, 8, 2, 52));
+    expect(state.latest(false)!.date, DateTime.utc(2026, 10, 20, 12));
+  });
   test(
     'latest successful workflow does not hide another failing workflow',
     () async {

@@ -228,9 +228,21 @@ class Release {
   String get notes => json['body'] as String? ?? '';
   String get url => json['html_url'] as String;
   bool get dev => json['prerelease'] == true;
-  DateTime get date =>
-      DateTime.tryParse(json['published_at'] as String? ?? '') ??
-      DateTime(1970);
+  DateTime get date {
+    var latest =
+        DateTime.tryParse(json['published_at'] as String? ?? '') ??
+        DateTime(1970);
+    if (dev) {
+      // Rolling prereleases keep their original publication time when an APK
+      // is replaced. The asset timestamp reflects the build users can install.
+      for (final apk in apks) {
+        final uploaded = DateTime.tryParse(apk['updated_at'] as String? ?? '');
+        if (uploaded != null && uploaded.isAfter(latest)) latest = uploaded;
+      }
+    }
+    return latest;
+  }
+
   List<Map<String, dynamic>> get apks => (json['assets'] as List? ?? [])
       .cast<Map<String, dynamic>>()
       .where((a) => (a['name'] as String).toLowerCase().endsWith('.apk'))
