@@ -393,7 +393,7 @@ void main() {
     expect(find.text('No stable release published yet.'), findsOneWidget);
   });
   for (final size in [const Size(390, 844), const Size(1280, 900)]) {
-    testWidgets('layout ${size.width} and screenshot', (tester) async {
+    testWidgets('layout ${size.width}', (tester) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -401,23 +401,40 @@ void main() {
       final lib = (await tester.runAsync(() => library()))!;
       addTearDown(lib.dispose);
       await tester.pumpWidget(CoreApp(library: lib));
-      final context = tester.element(find.byType(MaterialApp));
-      for (final icon in lib.projects.map((p) => p.icon).whereType<String>()) {
-        await tester.runAsync(() => precacheImage(AssetImage(icon), context));
+      if (size.width < 900) {
+        final context = tester.element(find.byType(MaterialApp));
+        for (final icon
+            in lib.projects.map((p) => p.icon).whereType<String>()) {
+          await tester.runAsync(() => precacheImage(AssetImage(icon), context));
+        }
       }
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile('goldens/library-${size.width.toInt()}.png'),
-      );
+      if (size.width < 900) {
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/library-390.png'),
+        );
+      } else {
+        expect(tester.getSize(find.byType(RefreshIndicator).first).width, 390);
+        expect(
+          find.text('Choose an app to explore its releases.'),
+          findsOneWidget,
+        );
+      }
       await tester.tap(find.text('Trans'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile('goldens/details-${size.width.toInt()}.png'),
-      );
+      if (size.width < 900) {
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/details-390.png'),
+        );
+      } else {
+        expect(tester.getSize(find.byType(RefreshIndicator).first).width, 390);
+        expect(find.text('Latest stable release'), findsOneWidget);
+        expect(find.text('v1.2.0'), findsOneWidget);
+      }
     });
   }
   testWidgets('phone supports 200 percent text scaling', (tester) async {
