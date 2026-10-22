@@ -2,6 +2,7 @@
   {
     "id": "core",
     "name": "Core",
+    "category": "Utilities",
     "description": "Install and follow updates for your apps in one place.",
     "repository": "khonager/core",
     "packageId": "dev.khonager.core.dev",
@@ -10,6 +11,7 @@
   {
     "id": "trans",
     "name": "Trans",
+    "category": "Travel",
     "description": "Your everyday public transit companion.",
     "repository": "khonager/Trans",
     "website": "https://trans.khonager.de",
@@ -20,6 +22,7 @@
   {
     "id": "typesync",
     "name": "TypeSync",
+    "category": "Productivity",
     "description": "Notes, ideas, and writing, wherever you are.",
     "repository": "khonager/TypeSync",
     "website": "https://typesync.khonager.de",
@@ -29,6 +32,7 @@
   {
     "id": "trace",
     "name": "Trace",
+    "category": "Communication",
     "description": "A private, local-first home for Matrix conversations.",
     "repository": "khonager/Trace",
     "packageId": "chat.trace.client",
@@ -37,6 +41,7 @@
   {
     "id": "majika",
     "name": "Majika",
+    "category": "Music",
     "description": "Explore your taste. Find your next favorite.",
     "repository": "khonager/Majika",
     "packageId": "de.khonager.majika",
@@ -45,6 +50,7 @@
   {
     "id": "dreamcord",
     "name": "Dreamcord",
+    "category": "Lifestyle",
     "description": "Record and revisit your dreams when you wake.",
     "repository": "khonager/dreamcord",
     "packageId": "com.example.dreamcord",
@@ -53,6 +59,7 @@
   {
     "id": "gram",
     "name": "Gram",
+    "category": "Games",
     "description": "A 3D sentient weapon game.",
     "repository": "khonager/gram",
     "icon": "assets/icons/gram.png"
@@ -60,6 +67,7 @@
   {
     "id": "riverfold",
     "name": "Riverfold",
+    "category": "Games",
     "description": "A card roguelike with hidden cards, a river, and aquatic companions.",
     "repository": "khonager/Riverfold",
     "packageId": "org.riverfold.game",
@@ -68,6 +76,7 @@
   {
     "id": "tipstroke",
     "name": "TipStroke",
+    "category": "Creative",
     "description": "A local-first drawing app for Android and Linux.",
     "repository": "khonager/TipStroke",
     "packageId": "dev.tipstroke.app",
@@ -76,6 +85,7 @@
   {
     "id": "motomeru",
     "name": "Motomeru",
+    "category": "Utilities",
     "description": "A search-focused Android launcher.",
     "repository": "khonager/Motomeru",
     "packageId": "de.mm20.launcher2.release",
@@ -84,6 +94,7 @@
   {
     "id": "adwise",
     "name": "AdWise",
+    "category": "Business",
     "description": "Browse opt-in ads with visible personalization controls.",
     "repository": "khonager/adwise",
     "website": "https://getadwise.web.app",
@@ -93,6 +104,7 @@
   {
     "id": "files",
     "name": "Files",
+    "category": "Productivity",
     "description": "A file portal for sharing and managing files.",
     "repository": "khonager/files",
     "website": "https://files.khonager.de",
@@ -101,6 +113,7 @@
   {
     "id": "wisec",
     "name": "WiseC",
+    "category": "Productivity",
     "description": "A branded file sharing portal.",
     "repository": "khonager/files",
     "website": "https://wisec-files.web.app",
@@ -109,6 +122,7 @@
   {
     "id": "safezone",
     "name": "SafeZone",
+    "category": "Productivity",
     "description": "A branded file sharing portal.",
     "repository": "khonager/files",
     "website": "https://safezone-files.web.app",
@@ -117,6 +131,7 @@
   {
     "id": "karma-tracker",
     "name": "Karma Tracker",
+    "category": "Lifestyle",
     "description": "Track your karma in a simple web app.",
     "repository": "khonager/karma-tracker",
     "website": "https://karma-tracker-web.web.app",
@@ -125,6 +140,7 @@
   {
     "id": "roid",
     "name": "ROID",
+    "category": "Photos",
     "description": "A shared photo space for couples.",
     "repository": "khonager/roid",
     "website": "https://solaroid-lunaroid.web.app",
@@ -134,6 +150,7 @@
   {
     "id": "website",
     "name": "Khonager",
+    "category": "Personal",
     "description": "My projects, experiments, and a little about me.",
     "repository": "khonager/portofolio",
     "website": "https://khonager.de",

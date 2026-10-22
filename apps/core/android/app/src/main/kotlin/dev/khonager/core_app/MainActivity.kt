@@ -89,11 +89,14 @@ class MainActivity : FlutterActivity() {
                                 result.error("permission", "Allow Core to install apps, then tap Install downloaded APK again.", null)
                             } else {
                                 val uri = FileProvider.getUriForFile(this, "$packageName.downloads", file)
-                                prefs.edit().putBoolean("$id.installing", true).apply()
+                                prefs.edit()
+                                    .putBoolean("$id.installing", true)
+                                    .putLong("$id.installedAt", current?.lastUpdateTime ?: 0L)
+                                    .putString("active.install", id)
+                                    .apply()
                                 val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri)
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     .putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                                prefs.edit().putString("active.install", id).apply()
                                 startActivityForResult(intent, 82)
                                 result.success(null)
                             }
@@ -153,13 +156,29 @@ class MainActivity : FlutterActivity() {
         val downloadId = prefs.getLong("$id.download", -1)
         if (downloadId != -1L) manager.remove(downloadId)
         apkFile(id).delete()
-        prefs.edit().remove("$id.download").remove("$id.package").remove("$id.installing").apply()
+        val editor = prefs.edit().remove("$id.download").remove("$id.package")
+            .remove("$id.installing").remove("$id.installedAt")
+        if (prefs.getString("active.install", null) == id) editor.remove("active.install")
+        editor.apply()
     }
     private fun status(id: String, pkg: String?): Map<String, Any?> {
         val data = mutableMapOf<String, Any?>("phase" to "none")
         if (!pkg.isNullOrBlank()) try {
             data["version"] = packageManager.getPackageInfo(pkg, 0).versionName
         } catch (_: PackageManager.NameNotFoundException) { }
+        if (prefs.getBoolean("$id.installing", false) && !pkg.isNullOrBlank()) {
+            val installedAt = prefs.getLong("$id.installedAt", -1L)
+            val installCompleted = if (installedAt >= 0L) try {
+                packageManager.getPackageInfo(pkg, 0).lastUpdateTime != installedAt
+            } catch (_: PackageManager.NameNotFoundException) { false }
+            else false
+            // Updating Core kills this activity before its installer result arrives.
+            // Older versions did not save installedAt, so clear their stale self-update too.
+            if (installCompleted || (installedAt == -1L && pkg == packageName)) {
+                cancel(id)
+                return data
+            }
+        }
         val downloadId = prefs.getLong("$id.download", -1)
         if (downloadId == -1L) return data
         manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
@@ -182,7 +201,7 @@ class MainActivity : FlutterActivity() {
         if (requestCode == 82) {
             val id = prefs.getString("active.install", null) ?: return
             if (resultCode == RESULT_OK) cancel(id)
-            else prefs.edit().putBoolean("$id.installing", false).apply()
+            else prefs.edit().putBoolean("$id.installing", false).remove("$id.installedAt").apply()
             prefs.edit().remove("active.install").apply()
         }
     }
