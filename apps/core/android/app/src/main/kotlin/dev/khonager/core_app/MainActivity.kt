@@ -168,10 +168,11 @@ class MainActivity : FlutterActivity() {
         } catch (_: PackageManager.NameNotFoundException) { }
         if (prefs.getBoolean("$id.installing", false) && !pkg.isNullOrBlank()) {
             val installedAt = prefs.getLong("$id.installedAt", -1L)
-            val installCompleted = if (installedAt >= 0L) try {
-                packageManager.getPackageInfo(pkg, 0).lastUpdateTime != installedAt
-            } catch (_: PackageManager.NameNotFoundException) { false }
-            else false
+            val installCompleted = if (installedAt >= 0L) {
+                try {
+                    packageManager.getPackageInfo(pkg, 0).lastUpdateTime != installedAt
+                } catch (_: PackageManager.NameNotFoundException) { false }
+            } else false
             // Updating Core kills this activity before its installer result arrives.
             // Older versions did not save installedAt, so clear their stale self-update too.
             if (installCompleted || (installedAt == -1L && pkg == packageName)) {
