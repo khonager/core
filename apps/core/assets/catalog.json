@@ -62,6 +62,7 @@
     "category": "Games",
     "description": "A 3D sentient weapon game.",
     "repository": "khonager/gram",
+    "packageId": "org.gram.game",
     "icon": "assets/icons/gram.png"
   },
   {

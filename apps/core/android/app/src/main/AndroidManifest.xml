@@ -59,6 +59,7 @@
         <package android:name="de.mm20.launcher2.release" />
         <package android:name="dev.khonager.core.dev" />
         <package android:name="dev.tipstroke.app" />
+        <package android:name="org.gram.game" />
         <package android:name="org.riverfold.game" />
         <!-- catalog packages:end -->
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
