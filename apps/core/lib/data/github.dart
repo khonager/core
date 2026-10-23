@@ -130,7 +130,8 @@ class GitHub {
         403 || 429 when isRateLimit => rateLimitMessage,
         403 =>
           'GitHub denied access to this resource. Connect GitHub or open it in a browser.',
-        404 => 'Repository or resource is unavailable. It may be private.',
+        404 =>
+          'Repository or resource is unavailable. If it is private, connect a GitHub token with access to it.',
         401 => 'GitHub requires authentication for this resource.',
         _ =>
           'GitHub is unavailable (${response.statusCode}). Pull down to retry.',

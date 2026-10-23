@@ -596,16 +596,17 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   ),
                 if (s.loading && release == null)
                   const LinearProgressIndicator()
-                else if (release == null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Text(
-                      dev
-                          ? 'No development release published yet.'
-                          : 'No stable release published yet.',
+                else if (release == null) ...[
+                  if (s.releaseError == null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Text(
+                        dev
+                            ? 'No development release published yet.'
+                            : 'No stable release published yet.',
+                      ),
                     ),
-                  )
-                else ...[
+                ] else ...[
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
