@@ -497,6 +497,43 @@ void main() {
       );
     },
   );
+  test('retries a rejected signed log link with a fresh redirect', () async {
+    var redirects = 0;
+    final github = GitHub(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/jobs')) {
+          return http.Response(
+            jsonEncode({
+              'jobs': [
+                {'id': 1, 'name': 'Build', 'status': 'completed'},
+              ],
+            }),
+            200,
+          );
+        }
+        if (request.url.host == 'api.github.com') {
+          expect(request.headers['Authorization'], 'Bearer test-only-token');
+          expect(request.headers['Cache-Control'], 'no-cache');
+          redirects++;
+          return http.Response(
+            '',
+            302,
+            headers: {'location': 'https://logs.example.com/signed/$redirects'},
+          );
+        }
+        expect(request.headers['Authorization'], isNull);
+        return request.url.path.endsWith('/1')
+            ? http.Response('expired', 403)
+            : http.Response('fresh log', 200);
+      }),
+    )..token = 'test-only-token';
+    addTearDown(github.dispose);
+    expect(
+      await github.logs(project, BuildRun(run(1, 1, 'failure'))),
+      contains('fresh log'),
+    );
+    expect(redirects, 2);
+  });
   test('stable release outside the recent dev feed is still found', () async {
     final github = GitHub(
       client: MockClient(

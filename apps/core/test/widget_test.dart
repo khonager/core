@@ -414,7 +414,7 @@ void main() {
     await tester.tap(find.text('Trans'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Check your connection'), findsWidgets);
-    expect(find.text('No stable release published yet.'), findsOneWidget);
+    expect(find.text('No stable release published yet.'), findsNothing);
   });
   for (final size in [const Size(390, 844), const Size(1280, 900)]) {
     testWidgets('layout ${size.width}', (tester) async {

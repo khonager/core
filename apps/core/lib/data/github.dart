@@ -352,35 +352,57 @@ class GitHub {
             'Wait for all jobs to finish before copying the full log.',
           );
         }
-        // Fetch the signed log redirect without forwarding a GitHub token to
-        // the storage host. Browsers can reject opaque manual redirects.
-        final request =
-            http.Request(
-                'GET',
-                Uri.https(
-                  'api.github.com',
-                  '/repos/${p.repository}/actions/jobs/${job['id']}/logs',
-                ),
-              )
-              ..headers.addAll(headers)
-              ..followRedirects = false;
-        var log = await http.Response.fromStream(
-          await client.send(request).timeout(const Duration(seconds: 30)),
-        );
-        if (log.statusCode == 302 || log.statusCode == 307) {
-          final location = Uri.tryParse(log.headers['location'] ?? '');
+        // Signed storage links can expire. Request a fresh link once if the
+        // storage host rejects one; never send the GitHub token to that host.
+        http.Response? log;
+        for (var attempt = 0; attempt < 2; attempt++) {
+          final request =
+              http.Request(
+                  'GET',
+                  Uri.https(
+                    'api.github.com',
+                    '/repos/${p.repository}/actions/jobs/${job['id']}/logs',
+                  ),
+                )
+                ..headers.addAll({...headers, 'Cache-Control': 'no-cache'})
+                ..followRedirects = false;
+          final redirect = await http.Response.fromStream(
+            await client.send(request).timeout(const Duration(seconds: 30)),
+          );
+          if (redirect.statusCode == 200) {
+            log = redirect;
+            break;
+          }
+          if (redirect.statusCode != 302 && redirect.statusCode != 307) {
+            if (redirect.statusCode == 401 ||
+                redirect.statusCode == 403 ||
+                redirect.statusCode == 404) {
+              throw GitHubException(
+                'GitHub could not access this job log. Check that your token has Actions: read permission for this repository.',
+                needsAccess: true,
+                statusCode: redirect.statusCode,
+              );
+            }
+            throw GitHubException(
+              'GitHub could not prepare this job log (${redirect.statusCode}). Open the build on GitHub.',
+              statusCode: redirect.statusCode,
+            );
+          }
+          final location = Uri.tryParse(redirect.headers['location'] ?? '');
           if (location == null || location.scheme != 'https') {
             throw GitHubException('GitHub returned an invalid log link.');
           }
           log = await client.get(location).timeout(const Duration(seconds: 30));
-        }
-        if (log.statusCode != 200) {
+          if (log.statusCode == 200) break;
+          if (attempt == 0 && {401, 403, 410}.contains(log.statusCode)) {
+            continue;
+          }
           throw GitHubException(
-            'Logs are expired or require GitHub access. Open this build on GitHub.',
-            needsAccess: log.statusCode == 401 || log.statusCode == 403,
+            'GitHub log storage returned ${log.statusCode}. Retry or open this build on GitHub.',
+            statusCode: log.statusCode,
           );
         }
-        output.writeln('===== ${job['name']} =====\n${log.body}\n');
+        output.writeln('===== ${job['name']} =====\n${log!.body}\n');
       }
       if (jobs.isEmpty && page == 1) {
         throw GitHubException('No job logs are available yet.');
