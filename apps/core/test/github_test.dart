@@ -578,6 +578,31 @@ void main() {
     expect(state.latest(false)!.tag, 'v1');
     expect(state.latest(true)!.tag, 'v2-dev');
   });
+  test(
+    'release history continues past a page containing development builds',
+    () async {
+      final github = GitHub(
+        client: MockClient((request) async {
+          final page = request.url.queryParameters['page'];
+          return http.Response(
+            jsonEncode(
+              page == '1'
+                  ? List.generate(
+                      30,
+                      (i) => release('v1.0.$i', i == 0, '2025-02-01'),
+                    )
+                  : [release('v0.9.0', false, '2025-01-01')],
+            ),
+            200,
+          );
+        }),
+      );
+      addTearDown(github.dispose);
+      final releases = await github.releases(project);
+      expect(releases.length, 31);
+      expect(releases.last.tag, 'v0.9.0');
+    },
+  );
   test('development release beyond the first page is found', () async {
     final requestedPages = <String?>[];
     final github = GitHub(

@@ -549,7 +549,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
-                              'Installed · $installed',
+                              s.versionSummary(installed, dev),
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),
@@ -612,7 +612,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          release.tag,
+                          release.versionLabel,
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),

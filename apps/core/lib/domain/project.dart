@@ -227,6 +227,27 @@ class Release {
   final Map<String, dynamic> json;
   String get tag => json['tag_name'] as String;
   String get notes => json['body'] as String? ?? '';
+
+  /// Publishers may use a rolling tag but include the APK version in notes.
+  String? get version {
+    const pattern = r'\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?';
+    final tagVersion = RegExp('^v?($pattern)\$').firstMatch(tag);
+    if (tagVersion != null) return tagVersion.group(1);
+    final documented = RegExp(
+      '^Version: *`?v?($pattern)`? *\$',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(notes);
+    if (documented != null) return documented.group(1);
+    // A whole version at the end of a release title (e.g. Trans 1.0.0-dev.2).
+    return RegExp(
+      '(?:^| )v?($pattern)\$',
+    ).firstMatch(json['name'] as String? ?? '')?.group(1);
+  }
+
+  String get versionLabel =>
+      version == tag.replaceFirst(RegExp(r'^v'), '') ? tag : version ?? tag;
+
   String get url => json['html_url'] as String;
   bool get dev => json['prerelease'] == true;
   DateTime get date {
@@ -272,6 +293,43 @@ class ProjectState {
       if (release.dev == dev) return release;
     }
     return null;
+  }
+
+  /// Compare immutable release identities, never arithmetic version gaps.
+  int? versionsBehind(String installed, bool dev) {
+    String normalize(String value) =>
+        value.startsWith('v') ? value.substring(1) : value;
+    final version = normalize(installed);
+    // Rolling tags cannot identify which APK is installed.
+    if (!RegExp(r'^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$').hasMatch(version)) {
+      return null;
+    }
+    final channel = releases.where((r) => r.dev == dev).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final tags = channel.map((r) => r.version ?? r.tag).toSet().toList();
+    final index = tags.indexOf(version);
+    return index < 0 ? null : index;
+  }
+
+  String versionSummary(String? installed, bool dev) {
+    final release = latest(dev);
+    final parts = <String>[
+      if (installed != null) 'Installed $installed',
+      if (release != null) 'Latest ${release.versionLabel}',
+    ];
+    if (installed != null) {
+      final behind = versionsBehind(installed, dev);
+      parts.add(switch (behind) {
+        null => 'Version comparison unavailable',
+        0 => 'Up to date',
+        1 => '1 version behind',
+        _ => '$behind versions behind',
+      });
+    }
+    if (releaseError != null || checked == null && releases.isNotEmpty) {
+      parts.add('Saved release data');
+    }
+    return parts.isEmpty ? 'Release version not checked' : parts.join(' · ');
   }
 
   BuildStatus get status {

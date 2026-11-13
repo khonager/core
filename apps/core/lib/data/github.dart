@@ -222,7 +222,7 @@ class GitHub {
               )
               as List;
       releases.addAll(parseReleases(batch));
-      if (releases.any((r) => r.dev) || batch.length < 30) break;
+      if (batch.length < 30) break;
       page++;
     }
     releases.sort((a, b) => b.date.compareTo(a.date));

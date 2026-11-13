@@ -209,6 +209,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                           return AppRow(
                             project: p,
                             state: s,
+                            versions: [
+                              for (final dev in [false, true])
+                                if (s.latest(dev) != null ||
+                                    widget.library.installed[dev
+                                            ? p.devPackageId ?? p.packageId
+                                            : p.packageId] !=
+                                        null)
+                                  '${dev ? 'Dev' : 'Stable'}: ${s.versionSummary(widget.library.installed[dev ? p.devPackageId ?? p.packageId : p.packageId], dev)}',
+                            ],
                             transfer: widget.library.transfer(p),
                             selected: wide && selected?.id == p.id,
                             onOpen: installedPackage == null
@@ -270,10 +279,12 @@ class AppRow extends StatelessWidget {
     required this.state,
     required this.onTap,
     this.onOpen,
+    this.versions = const [],
     this.transfer,
     this.selected = false,
   });
   final Project project;
+  final List<String> versions;
   final ProjectState state;
   final VoidCallback onTap;
   final VoidCallback? onOpen;
@@ -338,6 +349,14 @@ class AppRow extends StatelessWidget {
                             project.category,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
+                          for (final version in versions)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                version,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
                         ],
                       ),
                     ),

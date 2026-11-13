@@ -227,3 +227,21 @@ Use the shell's Flutter 3.47.0 consistently; a system Flutter version may differ
 The existing AGP 8 / Kotlin compatibility flags remain intentional while the
 plugin graph uses the legacy Kotlin Gradle plugin. Flutter's deprecation
 warnings for those versions are not the missing-SDK build failure.
+
+### Installed and release versions
+
+Library rows and project details compare the Android installed version with
+published releases in the selected stable/development channel. Core reads the
+version from a version tag (`v1.2.3`), a `Version: 1.2.3` line in release notes,
+or a release title ending in the version (`Trans 1.2.3-dev.4`). Release history
+is paginated so older installed versions can be matched. The count is the number
+of newer published versions, not the numeric difference between version strings.
+Saved data is identified when a refresh fails.
+
+For reliable comparisons, publishers should use the APK's exact `versionName`
+in that metadata, assign a unique version to every build, and retain releases.
+Rolling releases can identify the current build when their notes include its
+version, but overwritten or deleted history cannot provide a historical count.
+Unmatched versions show “Version comparison unavailable”; Core does not guess
+from build numbers or claim that an unknown version is current. Installed
+versions are available on Android only.
