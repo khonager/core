@@ -151,7 +151,23 @@ class GitHub {
   /// token. A public release still uses its normal browser URL.
   Future<String> apkDownloadUrl(Map<String, dynamic> asset) async {
     final publicUrl = asset['browser_download_url'] as String;
-    if (!connected) return publicUrl;
+    if (!connected) {
+      // Rolling releases can replace an APK at the same browser URL. Key the
+      // redirect cache by asset identity so a new upload cannot reuse it.
+      final uri = Uri.parse(publicUrl);
+      final id = asset['id'];
+      if (id == null) return publicUrl;
+      return uri
+          .replace(
+            queryParameters: {
+              ...uri.queryParameters,
+              'core_asset': '$id',
+              if (asset['updated_at'] != null)
+                'core_updated': asset['updated_at'] as String,
+            },
+          )
+          .toString();
+    }
     final apiUrl = Uri.tryParse(asset['url'] as String? ?? '');
     if (apiUrl == null ||
         apiUrl.scheme != 'https' ||

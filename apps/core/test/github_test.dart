@@ -48,6 +48,33 @@ Map<String, dynamic> run(
   'html_url': 'https://github.com/owner/sample/actions/runs/$id',
 };
 void main() {
+  test('replacement public APKs use distinct download URLs', () async {
+    final github = GitHub();
+    addTearDown(github.dispose);
+    final asset = <String, dynamic>{
+      'id': 123,
+      'updated_at': '2026-10-23T20:30:51Z',
+      'browser_download_url':
+          'https://github.com/owner/sample/releases/download/dev-latest/app.apk?download=1',
+    };
+    final first = Uri.parse(await github.apkDownloadUrl(asset));
+    asset['id'] = 456;
+    asset['updated_at'] = '2026-11-13T12:00:00Z';
+    final second = Uri.parse(await github.apkDownloadUrl(asset));
+    expect(first.path, second.path);
+    expect(first, isNot(second));
+    expect(second.queryParameters['download'], '1');
+    expect(second.queryParameters['core_asset'], '456');
+    expect(second.queryParameters['core_updated'], '2026-11-13T12:00:00Z');
+  });
+
+  test('public APKs without asset metadata retain their URL', () async {
+    final github = GitHub();
+    addTearDown(github.dispose);
+    const url = 'https://github.com/owner/sample/releases/download/v1/app.apk';
+    expect(await github.apkDownloadUrl({'browser_download_url': url}), url);
+  });
+
   test(
     'private APK resolves through the asset API without leaking access',
     () async {
