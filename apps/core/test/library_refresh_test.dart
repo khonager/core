@@ -377,4 +377,52 @@ void main() {
       'Stable change',
     );
   });
+
+  test(
+    'loading more commits appends the next page and stops at the end',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final pages = <String?>[];
+      final lib = Library(
+        preferences: await SharedPreferences.getInstance(),
+        device: TestDevice(),
+        github: GitHub(
+          client: MockClient((request) async {
+            if (!request.url.path.endsWith('/commits')) {
+              return http.Response('[]', 200);
+            }
+            final page = request.url.queryParameters['page'];
+            pages.add(page);
+            final count = page == '1' ? 5 : 2;
+            return http.Response(
+              jsonEncode([
+                for (var i = 0; i < count; i++)
+                  {
+                    'sha': '$page${i}abcde123456789',
+                    'html_url': 'https://github.com/owner/core/commit/$page-$i',
+                    'commit': {
+                      'message': 'Commit $page-$i',
+                      'committer': {'date': '2026-10-22T12:00:00Z'},
+                    },
+                  },
+              ]),
+              200,
+            );
+          }),
+        ),
+      );
+      addTearDown(lib.dispose);
+      await lib.init();
+      final project = lib.projects.first;
+      await lib.refreshCommits(project);
+      await lib.refreshCommits(project, loadMore: true);
+      await lib.refreshCommits(project, loadMore: true);
+      expect(pages, ['1', '2']);
+      expect(
+        lib.commits.where((commit) => commit.project.id == project.id),
+        hasLength(7),
+      );
+      expect(lib.commitsHasMore[lib.commitKey(project, false)], false);
+    },
+  );
 }

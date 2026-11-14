@@ -27,6 +27,8 @@ class Library extends ChangeNotifier {
   List<ProjectCommit> commits = [];
   final commitsErrors = <String, String>{};
   final commitsLoading = <String>{};
+  final commitsHasMore = <String, bool>{};
+  final _commitPages = <String, int>{};
   String? refreshNotice;
   String? error, deviceError;
   bool refreshing = false, _disposed = false, _polling = false;
@@ -153,6 +155,7 @@ class Library extends ChangeNotifier {
     Project p, {
     bool dev = false,
     bool automatic = true,
+    bool loadMore = false,
   }) async {
     final ref = dev ? states[p.id]?.latest(true)?.tag : null;
     if (dev && ref == null) return;
@@ -163,30 +166,62 @@ class Library extends ChangeNotifier {
       changed();
       return;
     }
+    final existing = commits
+        .where(
+          (entry) =>
+              entry.project.repository == p.repository && entry.dev == dev,
+        )
+        .toList();
+    if (loadMore && (existing.isEmpty || commitsHasMore[key] == false)) return;
     final attemptKey = 'commits.refresh.v2.$key';
     final previous = preferences.getInt(attemptKey);
     final interval = automatic
         ? (dev ? const Duration(minutes: 5) : const Duration(minutes: 30))
         : const Duration(minutes: 2);
-    if (previous != null &&
+    if (!loadMore &&
+        previous != null &&
         DateTime.now().difference(
               DateTime.fromMillisecondsSinceEpoch(previous),
             ) <
             interval) {
       return;
     }
-    await preferences.setInt(attemptKey, DateTime.now().millisecondsSinceEpoch);
+    if (!loadMore) {
+      await preferences.setInt(
+        attemptKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    }
     commitsLoading.add(key);
     changed();
     try {
-      final fetched = await github.commits(p, ref: ref, dev: dev);
-      commits = [
-        ...commits.where(
-          (entry) =>
-              entry.project.repository != p.repository || entry.dev != dev,
-        ),
-        ...fetched,
-      ]..sort((a, b) => b.date.compareTo(a.date));
+      final page = loadMore
+          ? (_commitPages[key] ?? (existing.length / 5).ceil()) + 1
+          : 1;
+      final fetched = await github.commits(p, ref: ref, dev: dev, page: page);
+      _commitPages[key] = page;
+      commitsHasMore[key] = fetched.length == 5;
+      commits =
+          [
+              ...commits.where(
+                (entry) =>
+                    loadMore ||
+                    entry.project.repository != p.repository ||
+                    entry.dev != dev,
+              ),
+              ...fetched,
+            ].fold<List<ProjectCommit>>([], (result, entry) {
+              if (!result.any(
+                (other) =>
+                    other.project.repository == entry.project.repository &&
+                    other.dev == entry.dev &&
+                    other.json['sha'] == entry.json['sha'],
+              )) {
+                result.add(entry);
+              }
+              return result;
+            })
+            ..sort((a, b) => b.date.compareTo(a.date));
       try {
         await preferences.setString(
           'commits.cache.v2',
@@ -488,6 +523,8 @@ class Library extends ChangeNotifier {
     }
     commits = [];
     commitsErrors.clear();
+    commitsHasMore.clear();
+    _commitPages.clear();
     _historicalJobs.clear();
     _historicalBuilds.clear();
     // Clear account-dependent cached data when changing access.

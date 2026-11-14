@@ -279,8 +279,9 @@ class GitHub {
     Project p, {
     String? ref,
     bool dev = false,
+    int page = 1,
   }) async {
-    final query = {'per_page': '5'};
+    final query = {'per_page': '5', 'page': '$page'};
     if (ref != null) query['sha'] = ref;
     final data =
         await get(

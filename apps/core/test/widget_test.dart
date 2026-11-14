@@ -171,6 +171,24 @@ void main() {
     expect(find.text(time), findsOneWidget);
   });
 
+  testWidgets('can select a previous release to install', (tester) async {
+    final lib = (await tester.runAsync(() => library()))!;
+    addTearDown(lib.dispose);
+    lib.states['core']!.releases.add(
+      Release(release('v1.1.0', false, '2026-08-01')),
+    );
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Core').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('v1.1.0').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Previous release'), findsOneWidget);
+    expect(find.text('v1.1.0'), findsWidgets);
+  });
+
   testWidgets('opening one app fetches only that repository', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final paths = <String>[];

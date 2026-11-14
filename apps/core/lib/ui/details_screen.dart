@@ -26,6 +26,7 @@ class DetailsScreen extends StatefulWidget {
 class _DetailsScreenState extends State<DetailsScreen> {
   bool dev = false, busy = false, copying = false;
   bool initialMetadataReady = false;
+  final selectedReleaseTags = <bool, String>{};
   int pollTicks = 0;
   Timer? buildPoll;
   Project get p => widget.project;
@@ -492,7 +493,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
     animation: lib,
     builder: (context, _) {
       final s = lib.states[p.id]!;
-      final release = s.latest(dev);
+      final releases = s.releases.where((r) => r.dev == dev).toList();
+      final selectedTag = selectedReleaseTags[dev];
+      final release =
+          releases.where((r) => r.tag == selectedTag).firstOrNull ??
+          releases.firstOrNull;
       final packageId = dev ? p.devPackageId ?? p.packageId : p.packageId;
       final installed = lib.installed[packageId];
       final key = '${p.id}.${dev ? 'dev' : 'stable'}';
@@ -607,6 +612,26 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       ),
                     ),
                 ] else ...[
+                  if (releases.length > 1) ...[
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('$dev:${release.tag}'),
+                      initialValue: release.tag,
+                      decoration: const InputDecoration(
+                        labelText: 'Version to install',
+                      ),
+                      items: [
+                        for (final candidate in releases)
+                          DropdownMenuItem(
+                            value: candidate.tag,
+                            child: Text(candidate.versionLabel),
+                          ),
+                      ],
+                      onChanged: (tag) => setState(() {
+                        if (tag != null) selectedReleaseTags[dev] = tag;
+                      }),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -637,9 +662,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    dev
-                        ? 'Latest development release'
-                        : 'Latest stable release',
+                    release == s.latest(dev)
+                        ? dev
+                              ? 'Latest development release'
+                              : 'Latest stable release'
+                        : 'Previous release',
                   ),
                   if (dev && p.devPackageId == null)
                     const Padding(
@@ -904,6 +931,33 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   ),
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
                   onTap: () => open(commit.url),
+                ),
+              if (lib.commits
+                      .where(
+                        (entry) =>
+                            entry.project.repository == p.repository &&
+                            entry.dev == dev,
+                      )
+                      .isNotEmpty &&
+                  (lib.commitsHasMore[lib.commitKey(p, dev)] ??
+                      lib.commits
+                                  .where(
+                                    (entry) =>
+                                        entry.project.repository ==
+                                            p.repository &&
+                                        entry.dev == dev,
+                                  )
+                                  .length %
+                              5 ==
+                          0))
+                Center(
+                  child: TextButton(
+                    onPressed:
+                        lib.commitsLoading.contains(lib.commitKey(p, dev))
+                        ? null
+                        : () => lib.refreshCommits(p, dev: dev, loadMore: true),
+                    child: const Text('Load more commits'),
+                  ),
                 ),
             ],
           ),
