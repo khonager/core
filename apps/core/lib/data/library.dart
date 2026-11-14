@@ -24,6 +24,7 @@ class Library extends ChangeNotifier {
   final states = <String, ProjectState>{};
   final downloads = <String, Map<String, dynamic>>{};
   final installed = <String, String>{};
+  final autoUpdateErrors = <String, String>{};
   List<ProjectCommit> commits = [];
   final commitsErrors = <String, String>{};
   final commitsLoading = <String>{};
@@ -108,6 +109,8 @@ class Library extends ChangeNotifier {
       );
       changed();
       await pollDevice();
+      // Only opted-in apps need release checks when Core opens.
+      unawaited(_checkEnabledUpdates());
       _timer = Timer.periodic(const Duration(seconds: 2), (_) {
         if (downloads.values.any(
           (d) => d['phase'] == 'downloading' || d['phase'] == 'installing',
@@ -371,6 +374,7 @@ class Library extends ChangeNotifier {
               DateTime.fromMillisecondsSinceEpoch(previous),
             ) <
             interval) {
+      await _prepareUpdates(p);
       return;
     }
     await preferences.setInt(attemptKey, DateTime.now().millisecondsSinceEpoch);
@@ -454,6 +458,125 @@ class Library extends ChangeNotifier {
     s.loading = false;
     await _saveBudget();
     changed();
+    if (s.releaseError == null) await _prepareUpdates(p);
+  }
+
+  String updateKey(Project p, bool dev) => '${p.id}.${dev ? 'dev' : 'stable'}';
+
+  bool autoUpdateEnabled(Project p, bool dev) =>
+      preferences.getBool('autoUpdate.${updateKey(p, dev)}') ?? false;
+
+  Future<void> setAutoUpdate(Project p, bool dev, bool enabled) async {
+    if (enabled && (p.devPackageId == null || p.devPackageId == p.packageId)) {
+      final other = updateKey(p, !dev);
+      await preferences.setBool('autoUpdate.$other', false);
+      await preferences.setBool('autoUpdate.pending.$other', false);
+    }
+    await preferences.setBool('autoUpdate.${updateKey(p, dev)}', enabled);
+    if (!enabled) {
+      await preferences.setBool(
+        'autoUpdate.pending.${updateKey(p, dev)}',
+        false,
+      );
+    }
+    autoUpdateErrors.remove(updateKey(p, dev));
+    changed();
+    if (enabled) {
+      await refreshProject(p, automatic: true);
+      await _prepareUpdates(p);
+    }
+  }
+
+  Future<void> _checkEnabledUpdates() async {
+    for (final p in projects) {
+      if (_disposed) return;
+      if (autoUpdateEnabled(p, false) || autoUpdateEnabled(p, true)) {
+        await refreshProject(p, automatic: true);
+        await _prepareUpdates(p);
+      }
+    }
+  }
+
+  Future<void> _prepareUpdates(Project p) async {
+    if (!device.android || _disposed) return;
+    for (final dev in [false, true]) {
+      if (!autoUpdateEnabled(p, dev)) continue;
+      final key = updateKey(p, dev);
+      final pkg = dev ? p.devPackageId ?? p.packageId : p.packageId;
+      final current = pkg == null ? null : installed[pkg];
+      final release = states[p.id]?.latest(dev);
+      if (current == null ||
+          release?.version == null ||
+          current.replaceFirst(RegExp(r'^v'), '') == release!.version ||
+          downloads[key]?['phase'] != 'none') {
+        continue;
+      }
+      final behind = states[p.id]!.versionsBehind(current, dev);
+      if (behind != null
+          ? behind <= 0
+          : !_isNewerVersion(current, release.version!)) {
+        continue;
+      }
+      final apks = release.apks;
+      final universal = apks
+          .where(
+            (a) => (a['name'] as String).toLowerCase().contains('universal'),
+          )
+          .toList();
+      final asset = universal.isNotEmpty
+          ? universal.first
+          : apks.length == 1
+          ? apks.first
+          : null;
+      if (asset == null) {
+        autoUpdateErrors[key] = 'Choose an APK manually for this release.';
+        changed();
+        continue;
+      }
+      try {
+        final url = await apkDownloadUrl(asset);
+        await device.download(key, asset['name'] as String, url, pkg);
+        await preferences.setBool('autoUpdate.pending.$key', true);
+        autoUpdateErrors.remove(key);
+        await pollDevice();
+      } catch (e) {
+        autoUpdateErrors[key] = e is PlatformException
+            ? e.message ?? 'Could not download this update.'
+            : _message(e);
+        changed();
+      }
+    }
+  }
+
+  bool _isNewerVersion(String installed, String available) {
+    final pattern = RegExp(
+      r'^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$',
+    );
+    final old = pattern.firstMatch(installed);
+    final next = pattern.firstMatch(available);
+    if (old == null || next == null) return false;
+    for (var i = 1; i <= 3; i++) {
+      final comparison = int.parse(
+        next.group(i)!,
+      ).compareTo(int.parse(old.group(i)!));
+      if (comparison != 0) return comparison > 0;
+    }
+    final oldPre = old.group(4), nextPre = next.group(4);
+    if (oldPre == null) return false;
+    if (nextPre == null) return true;
+    final oldParts = oldPre.split('.'), nextParts = nextPre.split('.');
+    for (var i = 0; i < oldParts.length && i < nextParts.length; i++) {
+      final a = int.tryParse(oldParts[i]), b = int.tryParse(nextParts[i]);
+      final comparison = a != null && b != null
+          ? b.compareTo(a)
+          : a != null
+          ? 1
+          : b != null
+          ? -1
+          : nextParts[i].compareTo(oldParts[i]);
+      if (comparison != 0) return comparison > 0;
+    }
+    return nextParts.length > oldParts.length;
   }
 
   String _message(Object e) => e is GitHubException
@@ -553,6 +676,24 @@ class Library extends ChangeNotifier {
             } else {
               installed.remove(pkg);
             }
+          }
+        }
+      }
+      for (final p in projects) {
+        for (final dev in [false, true]) {
+          final key = updateKey(p, dev);
+          if (!autoUpdateEnabled(p, dev) ||
+              downloads[key]?['phase'] != 'ready' ||
+              preferences.getBool('autoUpdate.pending.$key') != true) {
+            continue;
+          }
+          await preferences.setBool('autoUpdate.pending.$key', false);
+          try {
+            await device.install(key);
+          } catch (e) {
+            autoUpdateErrors[key] = e is PlatformException
+                ? e.message ?? 'Could not start the Android installer.'
+                : 'Could not start the Android installer.';
           }
         }
       }

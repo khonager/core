@@ -15,6 +15,36 @@ class TestDevice extends Device {
   bool get android => false;
 }
 
+class UpdateDevice extends TestDevice {
+  final downloadsStarted = <String>[];
+  final installsStarted = <String>[];
+  @override
+  bool get android => true;
+  @override
+  Future<String?> readGitHubAuth() async => null;
+  @override
+  Future<String?> readToken() async => null;
+  @override
+  Future<Map<String, dynamic>> status(String id, String? packageId) async => {
+    'phase': downloadsStarted.contains(id) ? 'ready' : 'none',
+    if (packageId != null) 'version': '1.0.0',
+  };
+  @override
+  Future<void> download(
+    String id,
+    String name,
+    String url,
+    String? packageId,
+  ) async {
+    downloadsStarted.add(id);
+  }
+
+  @override
+  Future<void> install(String id) async {
+    installsStarted.add(id);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
@@ -425,4 +455,53 @@ void main() {
       expect(lib.commitsHasMore[lib.commitKey(project, false)], false);
     },
   );
+
+  test('selected app updates download and ask Android to install', () async {
+    SharedPreferences.setMockInitialValues({});
+    final device = UpdateDevice();
+    final lib = Library(
+      preferences: await SharedPreferences.getInstance(),
+      device: device,
+      github: GitHub(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/releases')) {
+            return http.Response(
+              jsonEncode([
+                for (final version in ['2.0.0', '1.0.0'])
+                  {
+                    'tag_name': 'v$version',
+                    'prerelease': false,
+                    'draft': false,
+                    'published_at': version == '2.0.0'
+                        ? '2026-11-01T12:00:00Z'
+                        : '2026-10-01T12:00:00Z',
+                    'html_url':
+                        'https://github.com/khonager/core/releases/tag/v$version',
+                    'assets': [
+                      {
+                        'name': 'app-universal.apk',
+                        'size': 100,
+                        'browser_download_url':
+                            'https://github.com/khonager/core/releases/download/v$version/app-universal.apk',
+                      },
+                    ],
+                  },
+              ]),
+              200,
+            );
+          }
+          return http.Response(jsonEncode({'workflow_runs': []}), 200);
+        }),
+      ),
+    );
+    addTearDown(lib.dispose);
+    await lib.init();
+    final project = lib.projects.first;
+    await lib.setAutoUpdate(project, false, true);
+    expect(lib.autoUpdateEnabled(project, false), isTrue);
+    expect(device.downloadsStarted, ['${project.id}.stable']);
+    expect(device.installsStarted, ['${project.id}.stable']);
+    await lib.setAutoUpdate(project, false, false);
+    expect(lib.autoUpdateEnabled(project, false), isFalse);
+  });
 }

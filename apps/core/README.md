@@ -84,8 +84,8 @@ signing identity have not been configured yet.
 ## First version
 
 - Searchable curated Library and Project details; releases are inside details.
-- A recent-commits list at the bottom of each project's details page. Entries
-  open on GitHub; commits are fetched when details open and cached locally.
+- A paged recent-commits list at the bottom of each project's details page.
+  Entries open on GitHub; commits are fetched when details open and cached locally.
 - Warm eggshell surface, large rounded icons, subdued descriptions.
 - GitHub stable/prerelease data and Markdown changelogs. Stable releases are
   recovered through the latest endpoint when absent from the recent release feed;
@@ -105,6 +105,11 @@ signing identity have not been configured yet.
   and system-confirmed uninstall. A blue separator shows transfer state.
   Downloads survive app restarts. APK package IDs are checked against the
   catalog before handing off to Android's signature/compatibility checks.
+- Choose an earlier published version in each release channel. On Android,
+  automatic updates can be enabled per app and channel. Core checks selected
+  apps on launch or refresh, downloads a newer universal or single APK, and
+  opens Android's installer. Android requires confirmation for each install;
+  Core does not check for updates while closed.
 - Per-project notification switches, persisted on-device. Alerts are emitted
   for new changes detected when opening a project or refreshing the library,
   after an initial baseline. **No background notification polling or server push

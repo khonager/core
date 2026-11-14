@@ -585,6 +585,20 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     lib.refreshCommits(p, dev: dev);
                   },
                 ),
+                if (lib.device.android) ...[
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Automatic updates'),
+                    subtitle: const Text(
+                      'Check when Core opens or refreshes, download newer APKs, and ask Android to install them.',
+                    ),
+                    value: lib.autoUpdateEnabled(p, dev),
+                    onChanged: (enabled) => lib.setAutoUpdate(p, dev, enabled),
+                  ),
+                  if (lib.autoUpdateErrors[lib.updateKey(p, dev)]
+                      case final error?)
+                    Notice(error),
+                ],
                 const SizedBox(height: 20),
                 if (s.releaseError != null)
                   Notice(
