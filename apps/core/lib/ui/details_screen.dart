@@ -26,6 +26,8 @@ class DetailsScreen extends StatefulWidget {
 class _DetailsScreenState extends State<DetailsScreen> {
   bool dev = false, busy = false, copying = false;
   bool initialMetadataReady = false;
+  bool refreshingDetails = false;
+  Future<void>? initialRefresh;
   final selectedReleaseTags = <bool, String>{};
   int pollTicks = 0;
   Timer? buildPoll;
@@ -36,13 +38,8 @@ class _DetailsScreenState extends State<DetailsScreen> {
   void initState() {
     super.initState();
     lib.addListener(loadVisibleBuilds);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await lib.refreshProject(p, automatic: true);
-      if (!mounted) return;
-      initialMetadataReady = true;
-      lib.refreshCommits(p, dev: dev);
-      loadVisibleBuilds();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) initialRefresh = loadProject();
     });
     buildPoll = Timer.periodic(const Duration(minutes: 2), (_) {
       if (mounted &&
@@ -52,9 +49,17 @@ class _DetailsScreenState extends State<DetailsScreen> {
               true &&
           !lib.github.lowBudget &&
           (lib.github.connected || ++pollTicks % 5 == 0)) {
-        lib.refreshBuilds(p);
+        lib.refreshBuilds(p, automatic: true);
       }
     });
+  }
+
+  Future<void> loadProject() async {
+    await lib.refreshProject(p, automatic: true);
+    if (!mounted) return;
+    initialMetadataReady = true;
+    loadVisibleBuilds();
+    await lib.refreshCommits(p, dev: dev);
   }
 
   void loadVisibleBuilds() {
@@ -78,9 +83,18 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   Future<void> refreshDetails() async {
-    await lib.refreshProject(p);
-    await lib.refreshCommits(p, dev: dev, automatic: false);
-    await lib.refreshBuilds(p);
+    if (refreshingDetails) return;
+    setState(() => refreshingDetails = true);
+    try {
+      await initialRefresh;
+      if (!mounted) return;
+      await lib.refreshProject(p, force: true);
+      if (!mounted) return;
+      await lib.refreshCommits(p, dev: dev, automatic: false);
+      await lib.refreshBuildDetails(p);
+    } finally {
+      if (mounted) setState(() => refreshingDetails = false);
+    }
   }
 
   String estimate(Duration duration) {
@@ -590,6 +604,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
         appBar: AppBar(
           automaticallyImplyLeading: !widget.embedded,
           actions: [
+            IconButton(
+              tooltip: 'Refresh project',
+              onPressed: refreshingDetails ? null : refreshDetails,
+              icon: const Icon(Icons.refresh_rounded),
+            ),
             IconButton(
               tooltip: 'Notification preferences',
               onPressed: notifications,

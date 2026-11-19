@@ -72,11 +72,13 @@ class GitHub {
     String path, {
     Map<String, String>? query,
     Duration? maxAge,
+    bool revalidate = false,
   }) async {
     final uri = Uri.https('api.github.com', path, query);
     final cacheKey = uri.toString();
     final cached = _cache[cacheKey];
-    if (cached != null &&
+    if (!revalidate &&
+        cached != null &&
         maxAge != null &&
         DateTime.now().difference(cached.$3) < maxAge) {
       return cached.$2;
@@ -94,6 +96,10 @@ class GitHub {
           headers: {
             ...headers,
             if (cached?.$1 != null) 'If-None-Match': cached!.$1!,
+            // A conditional request bypasses the browser's HTTP cache even
+            // when Core has no ETag from this session yet.
+            if (revalidate && cached?.$1 == null)
+              'If-Modified-Since': 'Thu, 01 Jan 1970 00:00:00 GMT',
           },
         )
         .timeout(const Duration(seconds: 20));
@@ -210,7 +216,7 @@ class GitHub {
     );
   }
 
-  Future<List<Release>> releases(Project p) async {
+  Future<List<Release>> releases(Project p, {bool revalidate = false}) async {
     final releases = <Release>[];
     var page = 1;
     while (true) {
@@ -219,6 +225,7 @@ class GitHub {
                 '/repos/${p.repository}/releases',
                 query: {'per_page': '30', 'page': '$page'},
                 maxAge: const Duration(minutes: 2),
+                revalidate: revalidate,
               )
               as List;
       releases.addAll(parseReleases(batch));
@@ -234,6 +241,7 @@ class GitHub {
             await get(
                   '/repos/${p.repository}/releases/latest',
                   maxAge: const Duration(minutes: 2),
+                  revalidate: revalidate,
                 )
                 as Map<String, dynamic>,
           ),
@@ -245,11 +253,12 @@ class GitHub {
     return releases;
   }
 
-  Future<List<BuildRun>> runs(Project p) async {
+  Future<List<BuildRun>> runs(Project p, {bool revalidate = false}) async {
     final data =
         await get(
               '/repos/${p.repository}/actions/runs',
               maxAge: const Duration(seconds: 30),
+              revalidate: revalidate,
             )
             as Map<String, dynamic>;
     // Preserve the latest run of EACH workflow, so an unrelated successful job
@@ -280,6 +289,7 @@ class GitHub {
     String? ref,
     bool dev = false,
     int page = 1,
+    bool revalidate = false,
   }) async {
     final query = {'per_page': '5', 'page': '$page'};
     if (ref != null) query['sha'] = ref;
@@ -290,6 +300,7 @@ class GitHub {
               maxAge: dev
                   ? const Duration(minutes: 2)
                   : const Duration(minutes: 30),
+              revalidate: revalidate,
             )
             as List;
     return data

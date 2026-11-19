@@ -128,6 +128,57 @@ void main() {
     expect(requests, 1);
   });
 
+  test('explicit project refresh sees a push during the cooldown', () async {
+    SharedPreferences.setMockInitialValues({});
+    final requests = <http.Request>[];
+    var pushed = false;
+    final library = Library(
+      preferences: await SharedPreferences.getInstance(),
+      device: TestDevice(),
+      github: GitHub(
+        client: MockClient((request) async {
+          requests.add(request);
+          final body = switch (request.url.path.split('/').last) {
+            'runs' => {'workflow_runs': []},
+            'commits' => [
+              {
+                'sha': pushed ? 'bbbbbbbbbb' : 'aaaaaaaaaa',
+                'commit': {
+                  'message': pushed ? 'New push' : 'Previous commit',
+                  'committer': {'date': '2026-11-19T12:00:00Z'},
+                },
+              },
+            ],
+            _ => [],
+          };
+          return http.Response(jsonEncode(body), 200, headers: {'etag': 'old'});
+        }),
+      ),
+    );
+    addTearDown(library.dispose);
+    await library.init();
+    final project = library.projects.first;
+    await library.refreshProject(project, automatic: true);
+    await library.refreshCommits(project);
+    expect(library.commits.single.title, 'Previous commit');
+
+    pushed = true;
+    requests.clear();
+    await library.refreshProject(project, force: true);
+    await library.refreshCommits(project, automatic: false);
+
+    expect(requests.map((r) => r.url.path.split('/').last), [
+      'releases',
+      'runs',
+      'commits',
+    ]);
+    expect(
+      requests.map((r) => r.headers['If-None-Match']),
+      everyElement('old'),
+    );
+    expect(library.commits.single.title, 'New push');
+  });
+
   test('sign-in clears the cooldown and refreshes with user access', () async {
     SharedPreferences.setMockInitialValues({});
     var authenticatedRequests = 0;

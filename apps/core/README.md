@@ -156,8 +156,11 @@ memory until reload. Disconnect from Manage GitHub access to delete the token an
 clear account-dependent cached metadata. Tokens are never forwarded to signed
 log-download storage URLs. Android backup is disabled.
 
-Core shows saved release and build data at launch and fetches fresh metadata
-when a project page opens. A full library refresh is still available, but stops
+Core shows saved release and build data at launch and refreshes project metadata
+on open when its automatic refresh interval has elapsed. Use **Refresh project**
+in the project toolbar or pull down to check GitHub immediately for releases,
+builds, and commits in the selected channel. Development commits follow the
+latest published prerelease tag. A full library refresh stops
 early when the anonymous GitHub allowance runs low. Core reserves the final five
 anonymous API requests and remembers GitHub's reset time across restarts. The
 allowance is shared by devices on the same public IP address. Authenticated

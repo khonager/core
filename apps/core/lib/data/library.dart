@@ -180,10 +180,11 @@ class Library extends ChangeNotifier {
     if (loadMore && (existing.isEmpty || commitsHasMore[key] == false)) return;
     final attemptKey = 'commits.refresh.v2.$key';
     final previous = preferences.getInt(attemptKey);
-    final interval = automatic
-        ? (dev ? const Duration(minutes: 5) : const Duration(minutes: 30))
-        : const Duration(minutes: 2);
-    if (!loadMore &&
+    final interval = dev
+        ? const Duration(minutes: 5)
+        : const Duration(minutes: 30);
+    if (automatic &&
+        !loadMore &&
         previous != null &&
         DateTime.now().difference(
               DateTime.fromMillisecondsSinceEpoch(previous),
@@ -191,19 +192,25 @@ class Library extends ChangeNotifier {
             interval) {
       return;
     }
-    if (!loadMore) {
-      await preferences.setInt(
-        attemptKey,
-        DateTime.now().millisecondsSinceEpoch,
-      );
-    }
     commitsLoading.add(key);
     changed();
     try {
+      if (!loadMore) {
+        await preferences.setInt(
+          attemptKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+      }
       final page = loadMore
           ? (_commitPages[key] ?? (existing.length / 5).ceil()) + 1
           : 1;
-      final fetched = await github.commits(p, ref: ref, dev: dev, page: page);
+      final fetched = await github.commits(
+        p,
+        ref: ref,
+        dev: dev,
+        page: page,
+        revalidate: !automatic,
+      );
       _commitPages[key] = page;
       commitsHasMore[key] = fetched.length == 5;
       commits =
@@ -330,17 +337,18 @@ class Library extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshBuilds(Project p) async {
+  Future<void> refreshBuilds(Project p, {bool automatic = false}) async {
     final state = states[p.id]!;
-    if (github.rateLimited) return;
+    if (github.rateLimited) {
+      state.buildError = github.rateLimitMessage;
+      changed();
+      return;
+    }
     try {
-      state.runs = await github.runs(p);
+      state.runs = await github.runs(p, revalidate: !automatic);
       state.buildError = null;
       changed();
-      for (final run in state.runs) {
-        await loadBuildDetails(p, run, force: true);
-        if (github.rateLimited) break;
-      }
+      await refreshBuildDetails(p);
     } catch (e) {
       state.buildError = _message(e);
       changed();
@@ -349,7 +357,18 @@ class Library extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshProject(Project p, {bool automatic = false}) async {
+  Future<void> refreshBuildDetails(Project p) async {
+    for (final run in states[p.id]!.runs) {
+      if (github.rateLimited) break;
+      await loadBuildDetails(p, run, force: true);
+    }
+  }
+
+  Future<void> refreshProject(
+    Project p, {
+    bool automatic = false,
+    bool force = false,
+  }) async {
     final s = states[p.id]!;
     if (s.loading) return;
     if (github.rateLimited) {
@@ -371,7 +390,8 @@ class Library extends ChangeNotifier {
     final interval = automatic
         ? const Duration(minutes: 30)
         : const Duration(minutes: 2);
-    if (previous != null &&
+    if (!force &&
+        previous != null &&
         DateTime.now().difference(
               DateTime.fromMillisecondsSinceEpoch(previous),
             ) <
@@ -386,7 +406,7 @@ class Library extends ChangeNotifier {
     final oldRuns = {for (final r in s.runs) r.id: r.status};
     final hadBaseline = s.checked != null;
     try {
-      s.releases = await github.releases(p);
+      s.releases = await github.releases(p, revalidate: force);
       s.releaseError = null;
     } catch (e) {
       s.releaseError = _message(e);
@@ -395,7 +415,7 @@ class Library extends ChangeNotifier {
       s.buildError = github.rateLimitMessage;
     } else {
       try {
-        s.runs = await github.runs(p);
+        s.runs = await github.runs(p, revalidate: force);
         s.buildError = null;
       } catch (e) {
         s.buildError = _message(e);
