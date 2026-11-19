@@ -219,41 +219,61 @@ class _DetailsScreenState extends State<DetailsScreen> {
     }
   }
 
-  Future<void> action(Future<void> Function() work) async {
+  Future<void> action(
+    Future<void> Function() work, {
+    String? releaseUrl,
+    String? packageId,
+  }) async {
     if (busy) return;
     setState(() => busy = true);
     try {
       await work();
     } catch (e) {
-      if (e is PlatformException && e.code == 'signing' && mounted) {
-        await showDialog<void>(
+      if (e is PlatformException &&
+          (e.code == 'signing' || e.code == 'downgrade') &&
+          mounted) {
+        final downgrade = e.code == 'downgrade';
+        final canUninstall =
+            downgrade && e.details != true && packageId != null;
+        final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Cannot update this app'),
+            title: Text(
+              downgrade ? 'Install an older version' : 'Cannot update this app',
+            ),
             content: Text(
-              '${e.message}\n\nDownload the release APK in your browser before uninstalling the existing app. Then install the downloaded APK from your browser or Files. Uninstalling clears the app’s saved data.',
+              canUninstall
+                  ? '${e.message} Uninstalling clears the app’s saved data. Then return here and tap Install downloaded APK.'
+                  : '${e.message}\n\nDownload the release APK in your browser before uninstalling the existing app. Then install the downloaded APK from your browser or Files. Uninstalling clears the app’s saved data.',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
               ),
-              if (lib.states[p.id]?.latest(dev) != null)
+              if (canUninstall || releaseUrl != null)
                 FilledButton(
-                  onPressed: () async {
-                    final url = lib.states[p.id]!.latest(dev)!.url;
-                    Navigator.pop(context);
-                    try {
-                      await lib.device.open(url);
-                    } catch (_) {
-                      message('Could not open this release in your browser.');
-                    }
-                  },
-                  child: const Text('Open release'),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(canUninstall ? 'Uninstall' : 'Open release'),
                 ),
             ],
           ),
         );
+        if (confirmed == true && mounted) {
+          try {
+            if (canUninstall) {
+              await lib.device.uninstall(packageId);
+            } else {
+              await lib.device.open(releaseUrl!);
+            }
+          } catch (_) {
+            message(
+              canUninstall
+                  ? 'Could not open the Android uninstaller.'
+                  : 'Could not open this release in your browser.',
+            );
+          }
+        }
       } else {
         message(
           e is PlatformException
@@ -432,57 +452,101 @@ class _DetailsScreenState extends State<DetailsScreen> {
     );
   }
 
-  Future<void> download(Release release, String? packageId) async {
-    final assets = release.apks;
-    if (assets.isEmpty) {
-      await open(release.url);
-      return;
-    }
-    final asset = await showModalBottomSheet<Map<String, dynamic>>(
+  Future<void> chooseVersion(List<Release> releases, Release current) async {
+    final tag = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Choose a download',
-                  style: Theme.of(context).textTheme.headlineMedium,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .6,
+          child: Column(
+            children: [
+              Text(
+                'App versions',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: releases.length,
+                  itemBuilder: (context, index) {
+                    final release = releases[index];
+                    final selected = release.tag == current.tag;
+                    return ListTile(
+                      title: Text(release.versionLabel),
+                      subtitle: Text(
+                        MaterialLocalizations.of(
+                          context,
+                        ).formatMediumDate(release.date.toLocal()),
+                      ),
+                      selected: selected,
+                      trailing: selected
+                          ? const Icon(Icons.check_rounded)
+                          : null,
+                      onTap: () => Navigator.pop(context, release.tag),
+                    );
+                  },
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Choose the APK for your device. Universal builds work across supported architectures.',
-                ),
-                const SizedBox(height: 12),
-                for (final a in assets)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.android_rounded),
-                    title: Text(a['name'] as String),
-                    subtitle: Text(
-                      '${((a['size'] as num) / 1048576).toStringAsFixed(1)} MB',
-                    ),
-                    trailing: const Icon(Icons.download_rounded),
-                    onTap: () => Navigator.pop(context, a),
-                  ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
-    if (asset == null) return;
+    if (tag != null && mounted) setState(() => selectedReleaseTags[dev] = tag);
+  }
+
+  Future<void> download(
+    Release release,
+    List<Map<String, dynamic>> assets,
+    String? packageId,
+    String key,
+  ) async {
+    final asset =
+        assets.singleOrNull ??
+        await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          isScrollControlled: true,
+          builder: (context) => SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Choose an APK',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    for (final a in assets)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.android_rounded),
+                        title: Text(a['name'] as String),
+                        subtitle: Text(
+                          '${((a['size'] as num) / 1048576).toStringAsFixed(1)} MB',
+                        ),
+                        trailing: const Icon(Icons.download_rounded),
+                        onTap: () => Navigator.pop(context, a),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+    if (asset == null || !mounted) return;
     await action(() async {
       final url = await lib.apkDownloadUrl(asset);
       await lib.device.download(
-        '${p.id}.${dev ? 'dev' : 'stable'}',
+        key,
         asset['name'] as String,
         url,
         packageId,
+        releaseTag: release.tag,
       );
       await lib.pollDevice();
     });
@@ -493,16 +557,35 @@ class _DetailsScreenState extends State<DetailsScreen> {
     animation: lib,
     builder: (context, _) {
       final s = lib.states[p.id]!;
-      final releases = s.releases.where((r) => r.dev == dev).toList();
-      final selectedTag = selectedReleaseTags[dev];
-      final release =
-          releases.where((r) => r.tag == selectedTag).firstOrNull ??
-          releases.firstOrNull;
       final packageId = dev ? p.devPackageId ?? p.packageId : p.packageId;
       final installed = lib.installed[packageId];
-      final key = '${p.id}.${dev ? 'dev' : 'stable'}';
+      final key = lib.updateKey(p, dev);
       final transfer = lib.downloads[key];
       final phase = transfer?['phase'];
+      final transferActive =
+          phase == 'downloading' || phase == 'installing' || phase == 'ready';
+      final transferTag = transferActive
+          ? (transfer?['releaseTag'] as String?)
+          : null;
+      final releases = s.releases.where((r) => r.dev == dev).toList();
+      final downloads = <Release, List<Map<String, dynamic>>>{};
+      for (final release in releases) {
+        final assets = lib.downloadApks(release);
+        if (assets.isNotEmpty) downloads[release] = assets;
+      }
+      final selectedTag = selectedReleaseTags[dev];
+      final defaultRelease = downloads.keys.firstOrNull ?? releases.firstOrNull;
+      final downloadedRelease = releases
+          .where((r) => r.tag == transferTag)
+          .firstOrNull;
+      final release =
+          downloadedRelease ??
+          downloads.keys.where((r) => r.tag == selectedTag).firstOrNull ??
+          defaultRelease;
+      final assets = downloads[release] ?? [];
+      final releaseUrl = transferTag != null && downloadedRelease == null
+          ? '${p.githubUrl}/releases/tag/${Uri.encodeComponent(transferTag)}'
+          : release?.url;
       return Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: !widget.embedded,
@@ -626,26 +709,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       ),
                     ),
                 ] else ...[
-                  if (releases.length > 1) ...[
-                    DropdownButtonFormField<String>(
-                      key: ValueKey('$dev:${release.tag}'),
-                      initialValue: release.tag,
-                      decoration: const InputDecoration(
-                        labelText: 'Version to install',
-                      ),
-                      items: [
-                        for (final candidate in releases)
-                          DropdownMenuItem(
-                            value: candidate.tag,
-                            child: Text(candidate.versionLabel),
-                          ),
-                      ],
-                      onChanged: (tag) => setState(() {
-                        if (tag != null) selectedReleaseTags[dev] = tag;
-                      }),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -675,12 +738,30 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    release == s.latest(dev)
-                        ? dev
-                              ? 'Latest development release'
-                              : 'Latest stable release'
-                        : 'Previous release',
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    children: [
+                      Text(
+                        release == s.latest(dev)
+                            ? dev
+                                  ? 'Latest development release'
+                                  : 'Latest stable release'
+                            : release == defaultRelease
+                            ? 'Latest compatible release'
+                            : 'Previous release',
+                      ),
+                      if (downloads.length > 1 && !transferActive)
+                        TextButton(
+                          onPressed: busy
+                              ? null
+                              : () => chooseVersion(
+                                  downloads.keys.toList(),
+                                  release,
+                                ),
+                          child: const Text('Other versions'),
+                        ),
+                    ],
                   ),
                   if (dev && p.devPackageId == null)
                     const Padding(
@@ -690,9 +771,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       ),
                     ),
                   const SizedBox(height: 20),
-                  if (phase == 'downloading' ||
-                      phase == 'installing' ||
-                      phase == 'ready') ...[
+                  if (transferActive) ...[
                     LinearProgressIndicator(
                       color: CoreColors.blue,
                       value: phase == 'installing'
@@ -713,7 +792,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       FilledButton.icon(
                         onPressed: busy
                             ? null
-                            : () => action(() => lib.device.install(key)),
+                            : () => action(
+                                () => lib.device.install(key),
+                                releaseUrl: releaseUrl,
+                                packageId: packageId,
+                              ),
                         icon: const Icon(Icons.install_mobile_rounded),
                         label: const Text('Install downloaded APK'),
                       ),
@@ -733,20 +816,26 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       const Notice(
                         'Download failed. Check your connection and try again.',
                       ),
+                    if (lib.device.android && assets.isEmpty)
+                      const Notice('No APK for this device is available.'),
                     FilledButton.icon(
                       onPressed: busy
                           ? null
-                          : () => download(release, packageId),
+                          : assets.isEmpty
+                          ? () => open(release.url)
+                          : () => download(release, assets, packageId, key),
                       icon: const Icon(Icons.download_rounded),
                       label: Text(
                         busy
                             ? 'Please wait…'
-                            : release.apks.isEmpty
+                            : assets.isEmpty
                             ? 'View release on GitHub'
                             : !lib.device.android
                             ? 'Download APK'
                             : installed == null
                             ? 'Install'
+                            : release != defaultRelease
+                            ? 'Install this version'
                             : 'Update / reinstall',
                       ),
                     ),

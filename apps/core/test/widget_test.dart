@@ -38,11 +38,56 @@ class TestDevice extends Device {
   }
 }
 
-Future<Library> library({bool offline = false}) async {
+class AndroidTestDevice extends TestDevice {
+  final downloadedApks = <(String?, String)>[];
+  final uninstalledPackages = <String>[];
+  String? releaseTag;
+
+  @override
+  bool get android => true;
+  @override
+  bool get secureStorage => false;
+  @override
+  Future<List<String>> supportedAbis() async => ['arm64-v8a', 'armeabi-v7a'];
+  @override
+  Future<Map<String, dynamic>> status(String id, String? packageId) async => {
+    'phase': id == 'trans.stable' && releaseTag != null ? 'ready' : 'none',
+    if (id == 'trans.stable') 'version': '1.2.0',
+    if (id == 'trans.stable') 'releaseTag': releaseTag,
+  };
+  @override
+  Future<void> download(
+    String id,
+    String name,
+    String url,
+    String? packageId, {
+    String? releaseTag,
+  }) async {
+    downloadedApks.add((releaseTag, name));
+    this.releaseTag = releaseTag;
+  }
+
+  @override
+  Future<void> install(String id) async {
+    throw PlatformException(
+      code: 'downgrade',
+      message:
+          'Uninstall the current version before installing this older version.',
+      details: false,
+    );
+  }
+
+  @override
+  Future<void> uninstall(String packageId) async {
+    uninstalledPackages.add(packageId);
+  }
+}
+
+Future<Library> library({bool offline = false, Device? device}) async {
   SharedPreferences.setMockInitialValues({});
   final lib = Library(
     preferences: await SharedPreferences.getInstance(),
-    device: TestDevice(),
+    device: device ?? TestDevice(),
     github: GitHub(
       client: MockClient((r) async {
         if (offline) throw Exception('offline');
@@ -172,21 +217,64 @@ void main() {
   });
 
   testWidgets('can select a previous release to install', (tester) async {
-    final lib = (await tester.runAsync(() => library()))!;
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final device = AndroidTestDevice();
+    final lib = (await tester.runAsync(() => library(device: device)))!;
     addTearDown(lib.dispose);
-    lib.states['core']!.releases.add(
-      Release(release('v1.1.0', false, '2026-08-01')),
-    );
+    Map<String, dynamic> asset(String name) => {
+      'name': name,
+      'browser_download_url':
+          'https://github.com/owner/sample/releases/download/v1.1.0/$name',
+    };
+    lib.states['trans']!.releases.addAll([
+      Release(
+        release('v1.1.0', false, '2026-08-01')
+          ..['assets'] = [
+            asset('app-x86_64.apk'),
+            asset('app-arm64-v8a.apk'),
+            asset('app-linux.tar.gz'),
+          ],
+      ),
+      Release(
+        release('v1.0.0', false, '2026-07-01')
+          ..['assets'] = [asset('app-linux.tar.gz')],
+      ),
+      Release(
+        release('v0.9.0', false, '2026-06-01')
+          ..['assets'] = [asset('app-x86_64.apk')],
+      ),
+    ]);
     await tester.pumpWidget(CoreApp(library: lib));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Core').last);
+    await tester.tap(find.text('Trans'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.ensureVisible(find.text('Other versions'));
+    await tester.tap(find.text('Other versions'));
     await tester.pumpAndSettle();
+    expect(find.text('App versions'), findsOneWidget);
+    expect(find.text('v1.0.0'), findsNothing);
+    expect(find.text('v0.9.0'), findsNothing);
     await tester.tap(find.text('v1.1.0').last);
     await tester.pumpAndSettle();
     expect(find.text('Previous release'), findsOneWidget);
-    expect(find.text('v1.1.0'), findsWidgets);
+    await tester.ensureVisible(find.text('Install this version'));
+    await tester.tap(find.text('Install this version'));
+    await tester.pumpAndSettle();
+    expect(device.downloadedApks, [('v1.1.0', 'app-arm64-v8a.apk')]);
+    expect(find.text('Other versions'), findsNothing);
+    await tester.ensureVisible(find.text('Install downloaded APK'));
+    await tester.tap(find.text('Install downloaded APK'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Uninstalling clears'), findsOneWidget);
+    expect(device.uninstalledPackages, isEmpty);
+    await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
+    await tester.pumpAndSettle();
+    expect(device.uninstalledPackages, [
+      lib.projects.firstWhere((p) => p.id == 'trans').packageId,
+    ]);
   });
 
   testWidgets('opening one app fetches only that repository', (tester) async {

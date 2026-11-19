@@ -34,8 +34,9 @@ class UpdateDevice extends TestDevice {
     String id,
     String name,
     String url,
-    String? packageId,
-  ) async {
+    String? packageId, {
+    String? releaseTag,
+  }) async {
     downloadsStarted.add(id);
   }
 

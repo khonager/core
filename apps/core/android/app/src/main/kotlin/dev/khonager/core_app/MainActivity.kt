@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
                     val id = call.argument<String>("id") ?: ""
                     val pkg = call.argument<String>("package")
                     when (call.method) {
+                        "supportedAbis" -> result.success(Build.SUPPORTED_ABIS.toList())
                         "status" -> result.success(status(id, pkg))
                         "download" -> {
                             val url = Uri.parse(call.argument<String>("url")!!)
@@ -49,7 +50,11 @@ class MainActivity : FlutterActivity() {
                                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                                 .setDestinationUri(Uri.fromFile(file))
                             val downloadId = manager.enqueue(request)
-                            prefs.edit().putLong("$id.download", downloadId).putString("$id.package", pkg).apply()
+                            prefs.edit()
+                                .putLong("$id.download", downloadId)
+                                .putString("$id.package", pkg)
+                                .putString("$id.releaseTag", call.argument<String>("releaseTag"))
+                                .apply()
                             result.success(null)
                         }
                         "cancel" -> { cancel(id); result.success(null) }
@@ -75,6 +80,14 @@ class MainActivity : FlutterActivity() {
                                 null
                             }
                             if (current != null) {
+                                if (versionCode(downloaded) < versionCode(current)) {
+                                    result.error(
+                                        "downgrade",
+                                        "Uninstall the current version before installing this older version.",
+                                        current.packageName == packageName
+                                    )
+                                    return@setMethodCallHandler
+                                }
                                 val existingCertificates = signingCertificates(current)
                                 val newCertificates = signingCertificates(downloaded)
                                 if (existingCertificates.isNotEmpty() && newCertificates.isNotEmpty() &&
@@ -141,6 +154,10 @@ class MainActivity : FlutterActivity() {
         require(id.matches(Regex("[a-zA-Z0-9._-]+")))
         return File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "$id.apk")
     }
+    @Suppress("DEPRECATION")
+    private fun versionCode(info: PackageInfo): Long =
+        if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+
     private fun signingCertificates(info: PackageInfo): Set<String> {
         val signatures = if (Build.VERSION.SDK_INT >= 28) {
             val signingInfo = info.signingInfo ?: return emptySet()
@@ -157,7 +174,7 @@ class MainActivity : FlutterActivity() {
         if (downloadId != -1L) manager.remove(downloadId)
         apkFile(id).delete()
         val editor = prefs.edit().remove("$id.download").remove("$id.package")
-            .remove("$id.installing").remove("$id.installedAt")
+            .remove("$id.installing").remove("$id.installedAt").remove("$id.releaseTag")
         if (prefs.getString("active.install", null) == id) editor.remove("active.install")
         editor.apply()
     }
@@ -182,6 +199,7 @@ class MainActivity : FlutterActivity() {
         }
         val downloadId = prefs.getLong("$id.download", -1)
         if (downloadId == -1L) return data
+        data["releaseTag"] = prefs.getString("$id.releaseTag", null)
         manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
             if (!cursor.moveToFirst()) { data["phase"] = "failed"; return data }
             val state = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))

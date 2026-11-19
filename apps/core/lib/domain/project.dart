@@ -269,6 +269,36 @@ class Release {
       .cast<Map<String, dynamic>>()
       .where((a) => (a['name'] as String).toLowerCase().endsWith('.apk'))
       .toList();
+
+  static final _apkAbi = RegExp(
+    r'(?:^|[._-])(arm64[-_]v8a|aarch64|arm64|armeabi[-_]v7a|armv7a?|x86[-_]64|amd64|x64|x86|riscv64)(?=[._-])',
+  );
+  static final _universalApk = RegExp(r'(?:^|[._-])universal(?=[._-])');
+
+  /// Returns the best APK candidates using Android's preferred ABI order.
+  List<Map<String, dynamic>> matchingApks(List<String> supportedAbis) {
+    final matches = <Map<String, dynamic>>[];
+    var bestRank = supportedAbis.length + 1;
+    for (final apk in apks) {
+      final name = (apk['name'] as String).toLowerCase();
+      final abi = switch (_apkAbi.firstMatch(name)?.group(1)) {
+        'aarch64' || 'arm64' || 'arm64_v8a' => 'arm64-v8a',
+        'armv7' || 'armv7a' || 'armeabi_v7a' => 'armeabi-v7a',
+        'amd64' || 'x64' || 'x86-64' => 'x86_64',
+        final abi => abi,
+      };
+      final rank = abi != null
+          ? supportedAbis.indexOf(abi)
+          : supportedAbis.length + (_universalApk.hasMatch(name) ? 0 : 1);
+      if (rank < 0 || rank > bestRank) continue;
+      if (rank < bestRank) {
+        matches.clear();
+        bestRank = rank;
+      }
+      matches.add(apk);
+    }
+    return matches;
+  }
 }
 
 List<Release> parseReleases(List<dynamic> data) =>

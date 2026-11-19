@@ -25,6 +25,7 @@ class Library extends ChangeNotifier {
   final downloads = <String, Map<String, dynamic>>{};
   final installed = <String, String>{};
   final autoUpdateErrors = <String, String>{};
+  List<String> _supportedAbis = [];
   List<ProjectCommit> commits = [];
   final commitsErrors = <String, String>{};
   final commitsLoading = <String>{};
@@ -107,6 +108,7 @@ class Library extends ChangeNotifier {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(budgetReset),
       );
+      _supportedAbis = await device.supportedAbis();
       changed();
       await pollDevice();
       // Only opted-in apps need release checks when Core opens.
@@ -463,6 +465,9 @@ class Library extends ChangeNotifier {
 
   String updateKey(Project p, bool dev) => '${p.id}.${dev ? 'dev' : 'stable'}';
 
+  List<Map<String, dynamic>> downloadApks(Release release) =>
+      device.android ? release.matchingApks(_supportedAbis) : release.apks;
+
   bool autoUpdateEnabled(Project p, bool dev) =>
       preferences.getBool('autoUpdate.${updateKey(p, dev)}') ?? false;
 
@@ -517,17 +522,8 @@ class Library extends ChangeNotifier {
           : !_isNewerVersion(current, release.version!)) {
         continue;
       }
-      final apks = release.apks;
-      final universal = apks
-          .where(
-            (a) => (a['name'] as String).toLowerCase().contains('universal'),
-          )
-          .toList();
-      final asset = universal.isNotEmpty
-          ? universal.first
-          : apks.length == 1
-          ? apks.first
-          : null;
+      final apks = downloadApks(release);
+      final asset = apks.singleOrNull;
       if (asset == null) {
         autoUpdateErrors[key] = 'Choose an APK manually for this release.';
         changed();
@@ -535,7 +531,13 @@ class Library extends ChangeNotifier {
       }
       try {
         final url = await apkDownloadUrl(asset);
-        await device.download(key, asset['name'] as String, url, pkg);
+        await device.download(
+          key,
+          asset['name'] as String,
+          url,
+          pkg,
+          releaseTag: release.tag,
+        );
         await preferences.setBool('autoUpdate.pending.$key', true);
         autoUpdateErrors.remove(key);
         await pollDevice();

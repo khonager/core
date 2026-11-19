@@ -9,6 +9,16 @@ class Device {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool get linux => !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
   bool get secureStorage => android || linux;
+
+  Future<List<String>> supportedAbis() async {
+    if (!android) return [];
+    try {
+      return await channel.invokeListMethod<String>('supportedAbis') ?? [];
+    } on MissingPluginException {
+      return [];
+    }
+  }
+
   Future<String?> readToken() async => secureStorage
       ? const FlutterSecureStorage().read(key: 'github.token')
       : null;
@@ -47,8 +57,9 @@ class Device {
     String id,
     String name,
     String url,
-    String? packageId,
-  ) async {
+    String? packageId, {
+    String? releaseTag,
+  }) async {
     if (!android) {
       await open(url);
       return;
@@ -58,6 +69,7 @@ class Device {
       'name': name,
       'url': url,
       'package': packageId,
+      'releaseTag': releaseTag,
     });
   }
 
