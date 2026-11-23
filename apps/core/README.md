@@ -107,9 +107,8 @@ signing identity have not been configured yet.
   catalog before handing off to Android's signature/compatibility checks.
 - Choose an earlier published version in each release channel. On Android,
   automatic updates can be enabled per app and channel. Core checks selected
-  apps on launch or refresh, downloads a newer universal or single APK, and
-  opens Android's installer. Android requires confirmation for each install;
-  Core does not check for updates while closed.
+  apps on launch or refresh and opens Android's installer when it finds one
+  matching APK for a newer release. Each install requires Android confirmation.
 - Per-project notification switches, persisted on-device. Alerts are emitted
   for new changes detected when opening a project or refreshing the library,
   after an initial baseline. **No background notification polling or server push
@@ -128,9 +127,11 @@ bundled asset and Android's explicit package-visibility queries. CI checks that
 these generated outputs agree. Catalog edits ship with a new Core build for now.
 
 `packageId` identifies the stable Android app. Set `devPackageId` when a dev APK
-uses a separate ID; otherwise Core checks against the stable package ID. All
-listed APKs are offered with their filenames; users choose their architecture.
-Android performs final signing, version, and device-compatibility validation.
+uses a separate ID. Without it, Core checks against the stable package ID. Core
+uses APK filenames to match the device's preferred architecture, with universal
+APKs as a fallback. When compatibility is unclear, users can download manually
+and Core remembers their selection per app and release channel. Android performs
+final signing, version, and device-compatibility validation.
 Core does not silently replace apps or bypass Android prompts. CI artifacts,
 split-APK bundles, and background auto-updates are not supported. Private
 GitHub release APKs can be installed on Android after connecting GitHub access.
@@ -239,12 +240,12 @@ warnings for those versions are not the missing-SDK build failure.
 ### Installed and release versions
 
 Library rows and project details compare the Android installed version with
-published releases in the selected stable/development channel. Core reads the
-version from a version tag (`v1.2.3`), a `Version: 1.2.3` line in release notes,
-or a release title ending in the version (`Trans 1.2.3-dev.4`). Release history
-is paginated so older installed versions can be matched. The count is the number
-of newer published versions, not the numeric difference between version strings.
-Saved data is identified when a refresh fails.
+published releases with a matching APK in the stable or development channel.
+Core reads the version from a version tag (`v1.2.3`), a `Version: 1.2.3` line in
+release notes, or a release title ending in the version (`Trans 1.2.3-dev.4`).
+Release history is paginated so older installed versions can be matched. The
+count reflects how many compatible versions were published since the installed
+version. Saved data is identified when a refresh fails.
 
 For reliable comparisons, publishers should use the APK's exact `versionName`
 in that metadata, assign a unique version to every build, and retain releases.

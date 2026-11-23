@@ -275,8 +275,11 @@ class Release {
   );
   static final _universalApk = RegExp(r'(?:^|[._-])universal(?=[._-])');
 
-  /// Returns the best APK candidates using Android's preferred ABI order.
-  List<Map<String, dynamic>> matchingApks(List<String> supportedAbis) {
+  /// Ranks known APKs by Android's ABI order, then universal and unknown APKs.
+  List<Map<String, dynamic>> matchingApks(
+    List<String> supportedAbis, {
+    bool allowUnknown = false,
+  }) {
     final matches = <Map<String, dynamic>>[];
     var bestRank = supportedAbis.length + 1;
     for (final apk in apks) {
@@ -287,9 +290,12 @@ class Release {
         'amd64' || 'x64' || 'x86-64' => 'x86_64',
         final abi => abi,
       };
-      final rank = abi != null
-          ? supportedAbis.indexOf(abi)
-          : supportedAbis.length + (_universalApk.hasMatch(name) ? 0 : 1);
+      final rank = switch (abi) {
+        final abi? when supportedAbis.isNotEmpty => supportedAbis.indexOf(abi),
+        null when _universalApk.hasMatch(name) => supportedAbis.length,
+        _ when allowUnknown => supportedAbis.length + 1,
+        _ => -1,
+      };
       if (rank < 0 || rank > bestRank) continue;
       if (rank < bestRank) {
         matches.clear();
@@ -326,7 +332,11 @@ class ProjectState {
   }
 
   /// Compare immutable release identities, never arithmetic version gaps.
-  int? versionsBehind(String installed, bool dev) {
+  int? versionsBehind(
+    String installed,
+    bool dev, {
+    Iterable<Release>? history,
+  }) {
     String normalize(String value) =>
         value.startsWith('v') ? value.substring(1) : value;
     final version = normalize(installed);
@@ -334,21 +344,27 @@ class ProjectState {
     if (!RegExp(r'^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$').hasMatch(version)) {
       return null;
     }
-    final channel = releases.where((r) => r.dev == dev).toList()
+    final channel = (history ?? releases).where((r) => r.dev == dev).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     final tags = channel.map((r) => r.version ?? r.tag).toSet().toList();
     final index = tags.indexOf(version);
     return index < 0 ? null : index;
   }
 
-  String versionSummary(String? installed, bool dev) {
-    final release = latest(dev);
+  String versionSummary(
+    String? installed,
+    bool dev, {
+    Iterable<Release>? history,
+  }) {
+    final release = (history ?? releases)
+        .where((r) => r.dev == dev)
+        .firstOrNull;
     final parts = <String>[
       if (installed != null) 'Installed $installed',
       if (release != null) 'Latest ${release.versionLabel}',
     ];
     if (installed != null) {
-      final behind = versionsBehind(installed, dev);
+      final behind = versionsBehind(installed, dev, history: history);
       parts.add(switch (behind) {
         null => 'Version comparison unavailable',
         0 => 'Up to date',

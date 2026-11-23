@@ -211,12 +211,9 @@ class _LibraryScreenState extends State<LibraryScreen>
                             state: s,
                             versions: [
                               for (final dev in [false, true])
-                                if (s.latest(dev) != null ||
-                                    widget.library.installed[dev
-                                            ? p.devPackageId ?? p.packageId
-                                            : p.packageId] !=
-                                        null)
-                                  '${dev ? 'Dev' : 'Stable'}: ${s.versionSummary(widget.library.installed[dev ? p.devPackageId ?? p.packageId : p.packageId], dev)}',
+                                if (widget.library.versionSummary(p, dev)
+                                    case final summary?)
+                                  '${dev ? 'Dev' : 'Stable'}: $summary',
                             ],
                             transfer: widget.library.transfer(p),
                             selected: wide && selected?.id == p.id,

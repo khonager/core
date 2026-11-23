@@ -229,7 +229,18 @@ void main() {
       'browser_download_url':
           'https://github.com/owner/sample/releases/download/v1.1.0/$name',
     };
-    lib.states['trans']!.releases.addAll([
+    final releases = lib.states['trans']!.releases;
+    releases.firstWhere((release) => !release.dev).json['assets'] = [
+      asset('app-universal.apk'),
+    ];
+    releases.insert(
+      0,
+      Release(
+        release('v2.0.0', false, '2026-10-01')
+          ..['assets'] = [asset('app-linux.tar.gz')],
+      ),
+    );
+    releases.addAll([
       Release(
         release('v1.1.0', false, '2026-08-01')
           ..['assets'] = [
@@ -249,12 +260,15 @@ void main() {
     ]);
     await tester.pumpWidget(CoreApp(library: lib));
     await tester.pumpAndSettle();
+    expect(find.textContaining('Latest v2.0.0'), findsNothing);
     await tester.tap(find.text('Trans'));
     await tester.pumpAndSettle();
+    expect(find.text('Latest compatible release'), findsOneWidget);
     await tester.ensureVisible(find.text('Other versions'));
     await tester.tap(find.text('Other versions'));
     await tester.pumpAndSettle();
     expect(find.text('App versions'), findsOneWidget);
+    expect(find.text('v2.0.0'), findsNothing);
     expect(find.text('v1.0.0'), findsNothing);
     expect(find.text('v0.9.0'), findsNothing);
     await tester.tap(find.text('v1.1.0').last);
@@ -275,6 +289,89 @@ void main() {
     expect(device.uninstalledPackages, [
       lib.projects.firstWhere((p) => p.id == 'trans').packageId,
     ]);
+  });
+
+  testWidgets('remembers a version when APK compatibility is unclear', (
+    tester,
+  ) async {
+    final lib = (await tester.runAsync(
+      () => library(device: AndroidTestDevice()),
+    ))!;
+    addTearDown(lib.dispose);
+    final state = lib.states['trans']!;
+    state.releases.add(Release(release('v1.1.0', false, '2026-08-01')));
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+
+    Future<void> openDetails() async {
+      await tester.tap(find.text('Trans'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> closeDetails() async {
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+
+    await openDetails();
+    await tester.ensureVisible(find.text('Other versions'));
+    await tester.tap(find.text('Other versions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('v1.1.0'));
+    await tester.pumpAndSettle();
+    await closeDetails();
+    await openDetails();
+    expect(find.text('v1.1.0'), findsOneWidget);
+
+    await closeDetails();
+    state.latest(false)!.json['assets'] = [
+      {'name': 'app-arm64-v8a.apk'},
+    ];
+    await openDetails();
+    expect(find.text('v1.2.0'), findsOneWidget);
+  });
+
+  testWidgets('keeps release details and uninstall when no APK matches', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final device = AndroidTestDevice();
+    final lib = (await tester.runAsync(() => library(device: device)))!;
+    addTearDown(lib.dispose);
+    final release = lib.states['trans']!.latest(false)!;
+    release.json['assets'] = [
+      {'name': 'app-x86_64.apk'},
+    ];
+    await tester.pumpWidget(CoreApp(library: lib));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Trans'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No APK for this device is available.'), findsOneWidget);
+    final githubLink = find.text('View release on GitHub');
+    await tester.ensureVisible(githubLink);
+    await tester.tap(githubLink);
+    await tester.pumpAndSettle();
+    expect(device.openedUrls, [release.url]);
+
+    final uninstall = find.text('Uninstall');
+    await tester.ensureVisible(uninstall);
+    await tester.tap(uninstall);
+    await tester.pumpAndSettle();
+    expect(device.uninstalledPackages, [
+      lib.projects.firstWhere((p) => p.id == 'trans').packageId,
+    ]);
+
+    final changelog = find.text('Changelog');
+    await tester.scrollUntilVisible(
+      changelog,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(changelog, findsOneWidget);
   });
 
   testWidgets('opening one app fetches only that repository', (tester) async {

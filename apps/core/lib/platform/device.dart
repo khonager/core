@@ -16,6 +16,8 @@ class Device {
       return await channel.invokeListMethod<String>('supportedAbis') ?? [];
     } on MissingPluginException {
       return [];
+    } on PlatformException {
+      return [];
     }
   }
 

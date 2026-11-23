@@ -467,7 +467,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   Future<void> chooseVersion(List<Release> releases, Release current) async {
-    final tag = await showModalBottomSheet<String>(
+    final choice = await showModalBottomSheet<Release>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -498,7 +498,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       trailing: selected
                           ? const Icon(Icons.check_rounded)
                           : null,
-                      onTap: () => Navigator.pop(context, release.tag),
+                      onTap: () => Navigator.pop(context, release),
                     );
                   },
                 ),
@@ -508,7 +508,19 @@ class _DetailsScreenState extends State<DetailsScreen> {
         ),
       ),
     );
-    if (tag != null && mounted) setState(() => selectedReleaseTags[dev] = tag);
+    if (choice == null || !mounted) return;
+    setState(() => selectedReleaseTags[choice.dev] = choice.tag);
+    await rememberRelease(choice);
+  }
+
+  Future<void> rememberRelease(Release release) async {
+    if (!lib.device.android) return;
+    try {
+      if (await lib.rememberRelease(p, release)) return;
+    } catch (_) {
+      // Keep the current selection if preferences are unavailable.
+    }
+    message('Could not save your version selection.');
   }
 
   Future<void> download(
@@ -562,6 +574,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
         packageId,
         releaseTag: release.tag,
       );
+      await rememberRelease(release);
       await lib.pollDevice();
     });
   }
@@ -588,7 +601,16 @@ class _DetailsScreenState extends State<DetailsScreen> {
         if (assets.isNotEmpty) downloads[release] = assets;
       }
       final selectedTag = selectedReleaseTags[dev];
-      final defaultRelease = downloads.keys.firstOrNull ?? releases.firstOrNull;
+      final androidApp = lib.device.android && p.packageId != null;
+      final compatible = androidApp
+          ? lib.compatibleReleases(p, dev).toSet()
+          : downloads.keys;
+      final rememberedTag = lib.lastSelectedReleaseTag(p, dev);
+      final defaultRelease =
+          compatible.firstOrNull ??
+          downloads.keys.where((r) => r.tag == rememberedTag).firstOrNull ??
+          downloads.keys.firstOrNull ??
+          releases.firstOrNull;
       final downloadedRelease = releases
           .where((r) => r.tag == transferTag)
           .firstOrNull;
@@ -656,7 +678,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
-                              s.versionSummary(installed, dev),
+                              lib.versionSummary(p, dev)!,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),
@@ -762,7 +784,12 @@ class _DetailsScreenState extends State<DetailsScreen> {
                     spacing: 12,
                     children: [
                       Text(
-                        release == s.latest(dev)
+                        androidApp &&
+                                !compatible.contains(release) &&
+                                assets.isNotEmpty &&
+                                !transferActive
+                            ? 'Device compatibility unknown'
+                            : release == s.latest(dev)
                             ? dev
                                   ? 'Latest development release'
                                   : 'Latest stable release'

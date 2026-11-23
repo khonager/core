@@ -16,7 +16,7 @@ class TestDevice extends Device {
 }
 
 class UpdateDevice extends TestDevice {
-  final downloadsStarted = <String>[];
+  final downloadsStarted = <(String, String?)>[];
   final installsStarted = <String>[];
   @override
   bool get android => true;
@@ -26,7 +26,9 @@ class UpdateDevice extends TestDevice {
   Future<String?> readToken() async => null;
   @override
   Future<Map<String, dynamic>> status(String id, String? packageId) async => {
-    'phase': downloadsStarted.contains(id) ? 'ready' : 'none',
+    'phase': downloadsStarted.any((download) => download.$1 == id)
+        ? 'ready'
+        : 'none',
     if (packageId != null) 'version': '1.0.0',
   };
   @override
@@ -37,7 +39,7 @@ class UpdateDevice extends TestDevice {
     String? packageId, {
     String? releaseTag,
   }) async {
-    downloadsStarted.add(id);
+    downloadsStarted.add((id, releaseTag));
   }
 
   @override
@@ -519,22 +521,25 @@ void main() {
           if (request.url.path.endsWith('/releases')) {
             return http.Response(
               jsonEncode([
-                for (final version in ['2.0.0', '1.0.0'])
+                for (final (version, date, asset) in [
+                  ('4.0.0', '2026-11-15', 'app-linux.tar.gz'),
+                  ('3.0.0', '2026-11-10', 'app.apk'),
+                  ('2.0.0', '2026-11-01', 'app-universal.apk'),
+                  ('1.0.0', '2026-10-01', 'app-universal.apk'),
+                ])
                   {
                     'tag_name': 'v$version',
                     'prerelease': false,
                     'draft': false,
-                    'published_at': version == '2.0.0'
-                        ? '2026-11-01T12:00:00Z'
-                        : '2026-10-01T12:00:00Z',
+                    'published_at': '${date}T12:00:00Z',
                     'html_url':
                         'https://github.com/khonager/core/releases/tag/v$version',
                     'assets': [
                       {
-                        'name': 'app-universal.apk',
+                        'name': asset,
                         'size': 100,
                         'browser_download_url':
-                            'https://github.com/khonager/core/releases/download/v$version/app-universal.apk',
+                            'https://github.com/khonager/core/releases/download/v$version/$asset',
                       },
                     ],
                   },
@@ -551,7 +556,7 @@ void main() {
     final project = lib.projects.first;
     await lib.setAutoUpdate(project, false, true);
     expect(lib.autoUpdateEnabled(project, false), isTrue);
-    expect(device.downloadsStarted, ['${project.id}.stable']);
+    expect(device.downloadsStarted, [('${project.id}.stable', 'v2.0.0')]);
     expect(device.installsStarted, ['${project.id}.stable']);
     await lib.setAutoUpdate(project, false, false);
     expect(lib.autoUpdateEnabled(project, false), isFalse);

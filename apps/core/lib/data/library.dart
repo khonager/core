@@ -485,8 +485,31 @@ class Library extends ChangeNotifier {
 
   String updateKey(Project p, bool dev) => '${p.id}.${dev ? 'dev' : 'stable'}';
 
-  List<Map<String, dynamic>> downloadApks(Release release) =>
-      device.android ? release.matchingApks(_supportedAbis) : release.apks;
+  List<Map<String, dynamic>> downloadApks(Release release) => device.android
+      ? release.matchingApks(_supportedAbis, allowUnknown: true)
+      : release.apks;
+
+  Iterable<Release> compatibleReleases(Project p, bool dev) => states[p.id]!
+      .releases
+      .where((r) => r.dev == dev && r.matchingApks(_supportedAbis).isNotEmpty);
+
+  String? versionSummary(Project p, bool dev) {
+    final packageId = dev ? p.devPackageId ?? p.packageId : p.packageId;
+    final state = states[p.id]!;
+    final history = device.android && p.packageId != null
+        ? compatibleReleases(p, dev)
+        : null;
+    final version = installed[packageId];
+    final latest = history == null ? state.latest(dev) : history.firstOrNull;
+    if (version == null && latest == null) return null;
+    return state.versionSummary(version, dev, history: history);
+  }
+
+  String? lastSelectedReleaseTag(Project p, bool dev) =>
+      preferences.getString('release.selected.${updateKey(p, dev)}');
+
+  Future<bool> rememberRelease(Project p, Release release) => preferences
+      .setString('release.selected.${updateKey(p, release.dev)}', release.tag);
 
   bool autoUpdateEnabled(Project p, bool dev) =>
       preferences.getBool('autoUpdate.${updateKey(p, dev)}') ?? false;
@@ -529,14 +552,19 @@ class Library extends ChangeNotifier {
       final key = updateKey(p, dev);
       final pkg = dev ? p.devPackageId ?? p.packageId : p.packageId;
       final current = pkg == null ? null : installed[pkg];
-      final release = states[p.id]?.latest(dev);
+      final history = compatibleReleases(p, dev).toList();
+      final release = history.firstOrNull;
       if (current == null ||
           release?.version == null ||
           current.replaceFirst(RegExp(r'^v'), '') == release!.version ||
           downloads[key]?['phase'] != 'none') {
         continue;
       }
-      final behind = states[p.id]!.versionsBehind(current, dev);
+      final behind = states[p.id]!.versionsBehind(
+        current,
+        dev,
+        history: history,
+      );
       if (behind != null
           ? behind <= 0
           : !_isNewerVersion(current, release.version!)) {
